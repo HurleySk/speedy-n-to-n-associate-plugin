@@ -6,9 +6,11 @@ namespace SpeedyNtoNAssociatePlugin
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && (components != null))
+            if (disposing)
             {
-                components.Dispose();
+                _colorizeTimer?.Dispose();
+                _sqlColorizeTimer?.Dispose();
+                components?.Dispose();
             }
             base.Dispose(disposing);
         }
@@ -37,8 +39,19 @@ namespace SpeedyNtoNAssociatePlugin
             this.tabFetchXml = new System.Windows.Forms.TabPage();
             this.lblFetchInstructions = new System.Windows.Forms.Label();
             this.txtFetchXml = new System.Windows.Forms.RichTextBox();
+            this.dgvFetchPreview = new System.Windows.Forms.DataGridView();
+            this.colFetchGuid1 = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.colFetchGuid2 = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.lblFetchXmlCount = new System.Windows.Forms.Label();
             this.btnPreviewFetchXml = new System.Windows.Forms.Button();
+            this.tabSql = new System.Windows.Forms.TabPage();
+            this.lblSqlInstructions = new System.Windows.Forms.Label();
+            this.txtSqlQuery = new System.Windows.Forms.RichTextBox();
+            this.dgvSqlPreview = new System.Windows.Forms.DataGridView();
+            this.colSqlGuid1 = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.colSqlGuid2 = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.btnPreviewSql = new System.Windows.Forms.Button();
+            this.lblSqlCount = new System.Windows.Forms.Label();
             this.grpSettings = new System.Windows.Forms.GroupBox();
             this.chkBypassPlugins = new System.Windows.Forms.CheckBox();
             this.chkVerboseLog = new System.Windows.Forms.CheckBox();
@@ -59,6 +72,9 @@ namespace SpeedyNtoNAssociatePlugin
             this.tabCsv.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.dgvCsvPreview)).BeginInit();
             this.tabFetchXml.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.dgvFetchPreview)).BeginInit();
+            this.tabSql.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.dgvSqlPreview)).BeginInit();
             this.grpSettings.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.nudRetries)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudParallelism)).BeginInit();
@@ -171,6 +187,7 @@ namespace SpeedyNtoNAssociatePlugin
             this.tabDataSource.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
             this.tabDataSource.Controls.Add(this.tabCsv);
             this.tabDataSource.Controls.Add(this.tabFetchXml);
+            this.tabDataSource.Controls.Add(this.tabSql);
             this.tabDataSource.Location = new System.Drawing.Point(12, 118);
             this.tabDataSource.Name = "tabDataSource";
             this.tabDataSource.SelectedIndex = 0;
@@ -254,6 +271,7 @@ namespace SpeedyNtoNAssociatePlugin
             this.btnFormatXml = new System.Windows.Forms.Button();
             this.tabFetchXml.Controls.Add(this.lblFetchInstructions);
             this.tabFetchXml.Controls.Add(this.txtFetchXml);
+            this.tabFetchXml.Controls.Add(this.dgvFetchPreview);
             this.tabFetchXml.Controls.Add(this.lblFetchXmlCount);
             this.tabFetchXml.Controls.Add(this.btnFormatXml);
             this.tabFetchXml.Controls.Add(this.btnPreviewFetchXml);
@@ -283,11 +301,39 @@ namespace SpeedyNtoNAssociatePlugin
             this.txtFetchXml.Multiline = true;
             this.txtFetchXml.Name = "txtFetchXml";
             this.txtFetchXml.ScrollBars = System.Windows.Forms.RichTextBoxScrollBars.Both;
-            this.txtFetchXml.Size = new System.Drawing.Size(750, 137);
+            this.txtFetchXml.Size = new System.Drawing.Size(750, 80);
             this.txtFetchXml.TabIndex = 1;
             this.txtFetchXml.WordWrap = false;
             this.txtFetchXml.AcceptsTab = true;
             this.txtFetchXml.TextChanged += new System.EventHandler(this.txtFetchXml_TextChanged);
+            //
+            // dgvFetchPreview
+            //
+            this.dgvFetchPreview.AllowUserToAddRows = false;
+            this.dgvFetchPreview.AllowUserToDeleteRows = false;
+            this.dgvFetchPreview.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
+            this.dgvFetchPreview.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+            this.dgvFetchPreview.Columns.AddRange(new System.Windows.Forms.DataGridViewColumn[] { this.colFetchGuid1, this.colFetchGuid2 });
+            this.dgvFetchPreview.Location = new System.Drawing.Point(9, 108);
+            this.dgvFetchPreview.Name = "dgvFetchPreview";
+            this.dgvFetchPreview.ReadOnly = true;
+            this.dgvFetchPreview.RowHeadersVisible = false;
+            this.dgvFetchPreview.Size = new System.Drawing.Size(750, 52);
+            this.dgvFetchPreview.TabIndex = 5;
+            //
+            // colFetchGuid1
+            //
+            this.colFetchGuid1.HeaderText = "GUID 1";
+            this.colFetchGuid1.Name = "colFetchGuid1";
+            this.colFetchGuid1.ReadOnly = true;
+            this.colFetchGuid1.Width = 300;
+            //
+            // colFetchGuid2
+            //
+            this.colFetchGuid2.HeaderText = "GUID 2";
+            this.colFetchGuid2.Name = "colFetchGuid2";
+            this.colFetchGuid2.ReadOnly = true;
+            this.colFetchGuid2.Width = 300;
             //
             // btnPreviewFetchXml
             //
@@ -319,6 +365,93 @@ namespace SpeedyNtoNAssociatePlugin
             this.lblFetchXmlCount.Name = "lblFetchXmlCount";
             this.lblFetchXmlCount.Size = new System.Drawing.Size(0, 13);
             this.lblFetchXmlCount.TabIndex = 3;
+            //
+            // tabSql
+            //
+            this.tabSql.Controls.Add(this.lblSqlInstructions);
+            this.tabSql.Controls.Add(this.txtSqlQuery);
+            this.tabSql.Controls.Add(this.dgvSqlPreview);
+            this.tabSql.Controls.Add(this.btnPreviewSql);
+            this.tabSql.Controls.Add(this.lblSqlCount);
+            this.tabSql.Location = new System.Drawing.Point(4, 22);
+            this.tabSql.Name = "tabSql";
+            this.tabSql.Padding = new System.Windows.Forms.Padding(6);
+            this.tabSql.Size = new System.Drawing.Size(768, 194);
+            this.tabSql.TabIndex = 2;
+            this.tabSql.Text = "SQL Query";
+            this.tabSql.UseVisualStyleBackColor = true;
+            //
+            // lblSqlInstructions
+            //
+            this.lblSqlInstructions.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
+            this.lblSqlInstructions.ForeColor = System.Drawing.Color.Gray;
+            this.lblSqlInstructions.Location = new System.Drawing.Point(9, 6);
+            this.lblSqlInstructions.Name = "lblSqlInstructions";
+            this.lblSqlInstructions.Size = new System.Drawing.Size(750, 15);
+            this.lblSqlInstructions.TabIndex = 0;
+            this.lblSqlInstructions.Text = "Write a SQL SELECT that returns two GUID columns (via TDS endpoint). Each row becomes one pair.";
+            //
+            // txtSqlQuery
+            //
+            this.txtSqlQuery.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
+            this.txtSqlQuery.Font = new System.Drawing.Font("Consolas", 8.25F);
+            this.txtSqlQuery.Location = new System.Drawing.Point(9, 24);
+            this.txtSqlQuery.Multiline = true;
+            this.txtSqlQuery.Name = "txtSqlQuery";
+            this.txtSqlQuery.ScrollBars = System.Windows.Forms.RichTextBoxScrollBars.Both;
+            this.txtSqlQuery.Size = new System.Drawing.Size(750, 80);
+            this.txtSqlQuery.TabIndex = 1;
+            this.txtSqlQuery.WordWrap = false;
+            this.txtSqlQuery.AcceptsTab = true;
+            this.txtSqlQuery.TextChanged += new System.EventHandler(this.txtSqlQuery_TextChanged);
+            //
+            // dgvSqlPreview
+            //
+            this.dgvSqlPreview.AllowUserToAddRows = false;
+            this.dgvSqlPreview.AllowUserToDeleteRows = false;
+            this.dgvSqlPreview.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
+            this.dgvSqlPreview.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+            this.dgvSqlPreview.Columns.AddRange(new System.Windows.Forms.DataGridViewColumn[] { this.colSqlGuid1, this.colSqlGuid2 });
+            this.dgvSqlPreview.Location = new System.Drawing.Point(9, 108);
+            this.dgvSqlPreview.Name = "dgvSqlPreview";
+            this.dgvSqlPreview.ReadOnly = true;
+            this.dgvSqlPreview.RowHeadersVisible = false;
+            this.dgvSqlPreview.Size = new System.Drawing.Size(750, 52);
+            this.dgvSqlPreview.TabIndex = 4;
+            //
+            // colSqlGuid1
+            //
+            this.colSqlGuid1.HeaderText = "GUID 1";
+            this.colSqlGuid1.Name = "colSqlGuid1";
+            this.colSqlGuid1.ReadOnly = true;
+            this.colSqlGuid1.Width = 300;
+            //
+            // colSqlGuid2
+            //
+            this.colSqlGuid2.HeaderText = "GUID 2";
+            this.colSqlGuid2.Name = "colSqlGuid2";
+            this.colSqlGuid2.ReadOnly = true;
+            this.colSqlGuid2.Width = 300;
+            //
+            // btnPreviewSql
+            //
+            this.btnPreviewSql.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
+            this.btnPreviewSql.Location = new System.Drawing.Point(9, 165);
+            this.btnPreviewSql.Name = "btnPreviewSql";
+            this.btnPreviewSql.Size = new System.Drawing.Size(120, 23);
+            this.btnPreviewSql.TabIndex = 2;
+            this.btnPreviewSql.Text = "Preview Pairs";
+            this.btnPreviewSql.UseVisualStyleBackColor = true;
+            this.btnPreviewSql.Click += new System.EventHandler(this.btnPreviewSql_Click);
+            //
+            // lblSqlCount
+            //
+            this.lblSqlCount.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
+            this.lblSqlCount.AutoSize = true;
+            this.lblSqlCount.Location = new System.Drawing.Point(135, 170);
+            this.lblSqlCount.Name = "lblSqlCount";
+            this.lblSqlCount.Size = new System.Drawing.Size(0, 13);
+            this.lblSqlCount.TabIndex = 3;
             //
             // grpSettings
             //
@@ -531,6 +664,10 @@ namespace SpeedyNtoNAssociatePlugin
             ((System.ComponentModel.ISupportInitialize)(this.dgvCsvPreview)).EndInit();
             this.tabFetchXml.ResumeLayout(false);
             this.tabFetchXml.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.dgvFetchPreview)).EndInit();
+            this.tabSql.ResumeLayout(false);
+            this.tabSql.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.dgvSqlPreview)).EndInit();
             this.grpSettings.ResumeLayout(false);
             this.grpSettings.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.nudBatchSize)).EndInit();
@@ -567,6 +704,17 @@ namespace SpeedyNtoNAssociatePlugin
         private System.Windows.Forms.Label lblFetchXmlCount;
         private System.Windows.Forms.Button btnPreviewFetchXml;
         private System.Windows.Forms.Button btnFormatXml;
+        private System.Windows.Forms.DataGridView dgvFetchPreview;
+        private System.Windows.Forms.DataGridViewTextBoxColumn colFetchGuid1;
+        private System.Windows.Forms.DataGridViewTextBoxColumn colFetchGuid2;
+        private System.Windows.Forms.TabPage tabSql;
+        private System.Windows.Forms.Label lblSqlInstructions;
+        private System.Windows.Forms.RichTextBox txtSqlQuery;
+        private System.Windows.Forms.DataGridView dgvSqlPreview;
+        private System.Windows.Forms.DataGridViewTextBoxColumn colSqlGuid1;
+        private System.Windows.Forms.DataGridViewTextBoxColumn colSqlGuid2;
+        private System.Windows.Forms.Button btnPreviewSql;
+        private System.Windows.Forms.Label lblSqlCount;
         private System.Windows.Forms.GroupBox grpSettings;
         private System.Windows.Forms.CheckBox chkBypassPlugins;
         private System.Windows.Forms.CheckBox chkVerboseLog;
