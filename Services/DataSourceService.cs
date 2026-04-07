@@ -50,16 +50,19 @@ namespace SpeedyNtoNAssociatePlugin.Services
             return pairs;
         }
 
-        public List<AssociationPair> LoadFromFetchXml(IOrganizationService service, string fetchXml)
+        public List<AssociationPair> LoadFromFetchXml(
+            IOrganizationService service, string fetchXml,
+            string entity1LogicalName, string entity2LogicalName)
         {
             var pairs = new List<AssociationPair>();
             var seen = new HashSet<(Guid, Guid)>();
+            int skipped = 0;
 
             // Ensure count attribute exists for paging support
             fetchXml = EnsureFetchCount(fetchXml);
 
             var response = service.RetrieveMultiple(new Microsoft.Xrm.Sdk.Query.FetchExpression(fetchXml));
-            ExtractPairs(response, pairs, seen);
+            ExtractPairs(response, pairs, seen, entity1LogicalName, entity2LogicalName, ref skipped);
 
             // Handle paging with proper XML manipulation
             int page = 2;
@@ -67,47 +70,104 @@ namespace SpeedyNtoNAssociatePlugin.Services
             {
                 var pagedFetch = SetPagingAttributes(fetchXml, response.PagingCookie, page);
                 response = service.RetrieveMultiple(new Microsoft.Xrm.Sdk.Query.FetchExpression(pagedFetch));
-                ExtractPairs(response, pairs, seen);
+                ExtractPairs(response, pairs, seen, entity1LogicalName, entity2LogicalName, ref skipped);
                 page++;
             }
 
+            SkippedRows = skipped;
             return pairs;
         }
 
-        private static void ExtractPairs(EntityCollection response, List<AssociationPair> pairs, HashSet<(Guid, Guid)> seen)
+        public int SkippedRows { get; private set; }
+
+        private static void ExtractPairs(EntityCollection response, List<AssociationPair> pairs,
+            HashSet<(Guid, Guid)> seen, string entity1Name, string entity2Name, ref int skipped)
         {
             foreach (var entity in response.Entities)
             {
-                // Extract the first two GUID values from the record's attributes
-                var guids = new List<Guid>();
+                // Collect all GUIDs tagged with their source entity name
+                var taggedGuids = new List<(Guid id, string entityName)>();
 
-                // First, the entity's own ID
+                // The entity's own ID belongs to entity.LogicalName
                 if (entity.Id != Guid.Empty)
-                    guids.Add(entity.Id);
+                    taggedGuids.Add((entity.Id, entity.LogicalName));
 
-                // Then check all attributes for GUIDs (including aliased values from link-entity)
                 foreach (var attr in entity.Attributes)
                 {
-                    if (guids.Count >= 2) break;
-
-                    Guid? val = null;
-                    if (attr.Value is Guid g)
-                        val = g;
-                    else if (attr.Value is AliasedValue av && av.Value is Guid ag)
-                        val = ag;
-                    else if (attr.Value is EntityReference er)
-                        val = er.Id;
-
-                    if (val.HasValue && val.Value != Guid.Empty && !guids.Contains(val.Value))
-                        guids.Add(val.Value);
+                    if (attr.Value is Guid g && g != Guid.Empty)
+                    {
+                        // Plain Guid attribute -- belongs to the primary entity
+                        if (!taggedGuids.Any(t => t.id == g))
+                            taggedGuids.Add((g, entity.LogicalName));
+                    }
+                    else if (attr.Value is AliasedValue av)
+                    {
+                        if (av.Value is Guid ag && ag != Guid.Empty)
+                        {
+                            if (!taggedGuids.Any(t => t.id == ag))
+                                taggedGuids.Add((ag, av.EntityLogicalName));
+                        }
+                    }
+                    else if (attr.Value is EntityReference er && er.Id != Guid.Empty)
+                    {
+                        if (!taggedGuids.Any(t => t.id == er.Id))
+                            taggedGuids.Add((er.Id, er.LogicalName));
+                    }
                 }
 
-                if (guids.Count >= 2)
+                // If no entity filter specified, just take the first two GUIDs
+                if (string.IsNullOrEmpty(entity1Name) || string.IsNullOrEmpty(entity2Name))
                 {
-                    var pair = new AssociationPair { Guid1 = guids[0], Guid2 = guids[1] };
+                    if (taggedGuids.Count >= 2)
+                    {
+                        var pair = new AssociationPair { Guid1 = taggedGuids[0].id, Guid2 = taggedGuids[1].id };
+                        var key = pair.NormalizedKey();
+                        if (seen.Add(key))
+                            pairs.Add(pair);
+                    }
+                    else
+                    {
+                        skipped++;
+                    }
+                    continue;
+                }
+
+                // Find one GUID from entity1 and one from entity2
+                Guid? guid1 = null, guid2 = null;
+
+                foreach (var tg in taggedGuids)
+                {
+                    if (!guid1.HasValue && tg.entityName == entity1Name)
+                        guid1 = tg.id;
+                    else if (!guid2.HasValue && tg.entityName == entity2Name)
+                        guid2 = tg.id;
+
+                    if (guid1.HasValue && guid2.HasValue) break;
+                }
+
+                // For self-referencing relationships, both entities have the same name
+                if (entity1Name == entity2Name && guid1.HasValue && !guid2.HasValue)
+                {
+                    foreach (var tg in taggedGuids)
+                    {
+                        if (tg.entityName == entity2Name && tg.id != guid1.Value)
+                        {
+                            guid2 = tg.id;
+                            break;
+                        }
+                    }
+                }
+
+                if (guid1.HasValue && guid2.HasValue)
+                {
+                    var pair = new AssociationPair { Guid1 = guid1.Value, Guid2 = guid2.Value };
                     var key = pair.NormalizedKey();
                     if (seen.Add(key))
                         pairs.Add(pair);
+                }
+                else
+                {
+                    skipped++;
                 }
             }
         }

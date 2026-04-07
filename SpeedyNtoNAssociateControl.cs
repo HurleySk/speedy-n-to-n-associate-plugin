@@ -282,14 +282,24 @@ namespace SpeedyNtoNAssociatePlugin
                 return;
             }
 
+            // Get entity names from selected relationship for smart filtering
+            string entity1Name = null, entity2Name = null;
+            var rel = cmbRelationship.SelectedItem as RelationshipInfo;
+            if (rel != null)
+            {
+                entity1Name = rel.Entity1LogicalName;
+                entity2Name = rel.Entity2LogicalName;
+            }
+
             WorkAsync(new WorkAsyncInfo
             {
                 Message = "Executing FetchXML query...",
                 Work = (worker, args) =>
                 {
-                    args.Result = _dataSourceService.LoadFromFetchXml(Service, (string)args.Argument);
+                    var param = (Tuple<string, string, string>)args.Argument;
+                    args.Result = _dataSourceService.LoadFromFetchXml(Service, param.Item1, param.Item2, param.Item3);
                 },
-                AsyncArgument = fetchXml,
+                AsyncArgument = Tuple.Create(fetchXml, entity1Name ?? "", entity2Name ?? ""),
                 PostWorkCallBack = (args) =>
                 {
                     if (args.Error != null)
@@ -300,8 +310,16 @@ namespace SpeedyNtoNAssociatePlugin
                     }
 
                     _loadedPairs = (List<AssociationPair>)args.Result;
-                    lblFetchXmlCount.Text = $"{_loadedPairs.Count:N0} pairs found (deduplicated).";
+                    var skipped = _dataSourceService.SkippedRows;
+
+                    var countText = $"{_loadedPairs.Count:N0} pairs found (deduplicated).";
+                    if (skipped > 0)
+                        countText += $" {skipped:N0} rows skipped (GUIDs did not match selected entities).";
+
+                    lblFetchXmlCount.Text = countText;
                     AppendLog($"FetchXML returned {_loadedPairs.Count:N0} pairs.");
+                    if (skipped > 0)
+                        AppendLog($"Skipped {skipped:N0} rows -- GUIDs did not match {entity1Name} or {entity2Name}.");
 
                     if (_loadedPairs.Count > 1_000_000)
                     {

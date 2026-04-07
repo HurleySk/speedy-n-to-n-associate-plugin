@@ -226,11 +226,16 @@ else {
     Write-Host "  N:N relationship '$relationshipSchemaName' already exists." -ForegroundColor Green
 }
 
-# Publish customizations
-Write-Host "`n  Publishing customizations..." -ForegroundColor Yellow
-$publishRequest = New-Object Microsoft.Crm.Sdk.Messages.PublishAllXmlRequest
-$conn.Execute($publishRequest) | Out-Null
-Write-Host "  Published." -ForegroundColor Green
+# Only publish if we created something new
+if (-not $entity1Exists -or -not $entity2Exists -or -not $relExists) {
+    Write-Host "`n  Publishing customizations..." -ForegroundColor Yellow
+    $publishRequest = New-Object Microsoft.Crm.Sdk.Messages.PublishAllXmlRequest
+    $conn.Execute($publishRequest) | Out-Null
+    Write-Host "  Published." -ForegroundColor Green
+}
+else {
+    Write-Host "`n  Skipping publish (nothing new to publish)." -ForegroundColor Gray
+}
 
 # ==========================================================================
 # Step 5: Create test records
