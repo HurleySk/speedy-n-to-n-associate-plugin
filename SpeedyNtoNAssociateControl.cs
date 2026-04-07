@@ -300,6 +300,7 @@ namespace SpeedyNtoNAssociatePlugin
                     lblCsvCount.Text = $"{_loadedPairs.Count:N0} pairs loaded (showing first {previewCount}).";
                     AppendLog($"Loaded {_loadedPairs.Count:N0} pairs from CSV.");
                     UpdateStartButton();
+                    PreFillProgress(_loadedPairs.Count);
                 }
                 catch (Exception ex)
                 {
@@ -469,7 +470,7 @@ namespace SpeedyNtoNAssociatePlugin
                     {
                         dgvFetchPreview.Rows.Add(_loadedPairs[i].Guid1.ToString(), _loadedPairs[i].Guid2.ToString());
                     }
-                    ShowPreviewGrid(txtFetchXml, dgvFetchPreview, previewCount > 0);
+                    splitFetch.Panel2Collapsed = previewCount == 0;
 
                     AppendLog($"FetchXML returned {_loadedPairs.Count:N0} pairs.");
                     if (skipped > 0)
@@ -483,6 +484,7 @@ namespace SpeedyNtoNAssociatePlugin
                     }
 
                     UpdateStartButton();
+                    PreFillProgress(_loadedPairs.Count);
                 }
             });
         }
@@ -608,7 +610,7 @@ namespace SpeedyNtoNAssociatePlugin
                     {
                         dgvSqlPreview.Rows.Add(_loadedPairs[i].Guid1.ToString(), _loadedPairs[i].Guid2.ToString());
                     }
-                    ShowPreviewGrid(txtSqlQuery, dgvSqlPreview, previewCount > 0);
+                    splitSql.Panel2Collapsed = previewCount == 0;
 
                     AppendLog($"SQL returned {_loadedPairs.Count:N0} pairs.");
                     if (skipped > 0)
@@ -622,6 +624,7 @@ namespace SpeedyNtoNAssociatePlugin
                     }
 
                     UpdateStartButton();
+                    PreFillProgress(_loadedPairs.Count);
                 }
             });
         }
@@ -863,23 +866,13 @@ namespace SpeedyNtoNAssociatePlugin
             suppressFlag = false;
         }
 
-        private static void ShowPreviewGrid(Control editor, DataGridView grid, bool show)
+        private void PreFillProgress(int pairCount)
         {
-            if (show)
-            {
-                var gridHeight = Math.Max(80, (editor.Height + grid.Height) / 2);
-                var editorHeight = editor.Bottom - editor.Top - gridHeight + grid.Height;
-                editor.Height = Math.Max(40, editorHeight);
-                grid.Top = editor.Bottom + 4;
-                grid.Height = gridHeight;
-                grid.Visible = true;
-            }
-            else
-            {
-                grid.Visible = false;
-                // Expand editor to fill the grid's space
-                editor.Height = grid.Bottom - editor.Top;
-            }
+            progressBar.Maximum = pairCount;
+            progressBar.Value = 0;
+            lblProgress.Text = $"0 / {pairCount:N0} completed";
+            lblDuplicates.Text = "0 duplicates skipped";
+            lblErrors.Text = "0 errors";
         }
 
         #endregion

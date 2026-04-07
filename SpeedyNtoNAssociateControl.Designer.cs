@@ -38,6 +38,7 @@ namespace SpeedyNtoNAssociatePlugin
             this.txtCsvPath = new System.Windows.Forms.TextBox();
             this.tabFetchXml = new System.Windows.Forms.TabPage();
             this.lblFetchInstructions = new System.Windows.Forms.Label();
+            this.splitFetch = new System.Windows.Forms.SplitContainer();
             this.txtFetchXml = new System.Windows.Forms.RichTextBox();
             this.dgvFetchPreview = new System.Windows.Forms.DataGridView();
             this.colFetchGuid1 = new System.Windows.Forms.DataGridViewTextBoxColumn();
@@ -46,6 +47,7 @@ namespace SpeedyNtoNAssociatePlugin
             this.btnPreviewFetchXml = new System.Windows.Forms.Button();
             this.tabSql = new System.Windows.Forms.TabPage();
             this.lblSqlInstructions = new System.Windows.Forms.Label();
+            this.splitSql = new System.Windows.Forms.SplitContainer();
             this.txtSqlQuery = new System.Windows.Forms.RichTextBox();
             this.dgvSqlPreview = new System.Windows.Forms.DataGridView();
             this.colSqlGuid1 = new System.Windows.Forms.DataGridViewTextBoxColumn();
@@ -72,8 +74,16 @@ namespace SpeedyNtoNAssociatePlugin
             this.tabCsv.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.dgvCsvPreview)).BeginInit();
             this.tabFetchXml.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.splitFetch)).BeginInit();
+            this.splitFetch.Panel1.SuspendLayout();
+            this.splitFetch.Panel2.SuspendLayout();
+            this.splitFetch.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.dgvFetchPreview)).BeginInit();
             this.tabSql.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.splitSql)).BeginInit();
+            this.splitSql.Panel1.SuspendLayout();
+            this.splitSql.Panel2.SuspendLayout();
+            this.splitSql.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.dgvSqlPreview)).BeginInit();
             this.grpSettings.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.nudRetries)).BeginInit();
@@ -271,8 +281,7 @@ namespace SpeedyNtoNAssociatePlugin
             //
             this.btnFormatXml = new System.Windows.Forms.Button();
             this.tabFetchXml.Controls.Add(this.lblFetchInstructions);
-            this.tabFetchXml.Controls.Add(this.txtFetchXml);
-            this.tabFetchXml.Controls.Add(this.dgvFetchPreview);
+            this.tabFetchXml.Controls.Add(this.splitFetch);
             this.tabFetchXml.Controls.Add(this.lblFetchXmlCount);
             this.tabFetchXml.Controls.Add(this.btnFormatXml);
             this.tabFetchXml.Controls.Add(this.btnPreviewFetchXml);
@@ -294,16 +303,33 @@ namespace SpeedyNtoNAssociatePlugin
             this.lblFetchInstructions.TabIndex = 0;
             this.lblFetchInstructions.Text = "Write a FetchXML that returns two ID attributes (e.g. via link-entity). Each row becomes one pair to associate.";
             //
+            // splitFetch
+            //
+            this.splitFetch.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
+            this.splitFetch.Location = new System.Drawing.Point(9, 24);
+            this.splitFetch.Name = "splitFetch";
+            this.splitFetch.Orientation = System.Windows.Forms.Orientation.Horizontal;
+            this.splitFetch.Size = new System.Drawing.Size(750, 137);
+            this.splitFetch.SplitterDistance = 70;
+            this.splitFetch.TabIndex = 1;
+            this.splitFetch.Panel2MinSize = 40;
+            this.splitFetch.Panel2Collapsed = true;
+            //
+            // splitFetch.Panel1 -- editor
+            //
+            this.splitFetch.Panel1.Controls.Add(this.txtFetchXml);
+            //
+            // splitFetch.Panel2 -- preview grid
+            //
+            this.splitFetch.Panel2.Controls.Add(this.dgvFetchPreview);
+            //
             // txtFetchXml
             //
-            this.txtFetchXml.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
+            this.txtFetchXml.Dock = System.Windows.Forms.DockStyle.Fill;
             this.txtFetchXml.Font = new System.Drawing.Font("Consolas", 8.25F);
-            this.txtFetchXml.Location = new System.Drawing.Point(9, 24);
-            this.txtFetchXml.Multiline = true;
             this.txtFetchXml.Name = "txtFetchXml";
             this.txtFetchXml.ScrollBars = System.Windows.Forms.RichTextBoxScrollBars.Both;
-            this.txtFetchXml.Size = new System.Drawing.Size(750, 137);
-            this.txtFetchXml.TabIndex = 1;
+            this.txtFetchXml.TabIndex = 0;
             this.txtFetchXml.WordWrap = false;
             this.txtFetchXml.AcceptsTab = true;
             this.txtFetchXml.TextChanged += new System.EventHandler(this.txtFetchXml_TextChanged);
@@ -312,31 +338,26 @@ namespace SpeedyNtoNAssociatePlugin
             //
             this.dgvFetchPreview.AllowUserToAddRows = false;
             this.dgvFetchPreview.AllowUserToDeleteRows = false;
-            this.dgvFetchPreview.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
+            this.dgvFetchPreview.Dock = System.Windows.Forms.DockStyle.Fill;
             this.dgvFetchPreview.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             this.dgvFetchPreview.Columns.AddRange(new System.Windows.Forms.DataGridViewColumn[] { this.colFetchGuid1, this.colFetchGuid2 });
-            this.dgvFetchPreview.Location = new System.Drawing.Point(9, 108);
             this.dgvFetchPreview.Name = "dgvFetchPreview";
             this.dgvFetchPreview.ReadOnly = true;
             this.dgvFetchPreview.RowHeadersVisible = false;
             this.dgvFetchPreview.AutoSizeColumnsMode = System.Windows.Forms.DataGridViewAutoSizeColumnsMode.Fill;
-            this.dgvFetchPreview.Size = new System.Drawing.Size(750, 52);
-            this.dgvFetchPreview.TabIndex = 5;
-            this.dgvFetchPreview.Visible = false;
+            this.dgvFetchPreview.TabIndex = 0;
             //
             // colFetchGuid1
             //
             this.colFetchGuid1.HeaderText = "GUID 1";
             this.colFetchGuid1.Name = "colFetchGuid1";
             this.colFetchGuid1.ReadOnly = true;
-            this.colFetchGuid1.Width = 300;
             //
             // colFetchGuid2
             //
             this.colFetchGuid2.HeaderText = "GUID 2";
             this.colFetchGuid2.Name = "colFetchGuid2";
             this.colFetchGuid2.ReadOnly = true;
-            this.colFetchGuid2.Width = 300;
             //
             // btnPreviewFetchXml
             //
@@ -372,8 +393,7 @@ namespace SpeedyNtoNAssociatePlugin
             // tabSql
             //
             this.tabSql.Controls.Add(this.lblSqlInstructions);
-            this.tabSql.Controls.Add(this.txtSqlQuery);
-            this.tabSql.Controls.Add(this.dgvSqlPreview);
+            this.tabSql.Controls.Add(this.splitSql);
             this.tabSql.Controls.Add(this.btnPreviewSql);
             this.tabSql.Controls.Add(this.lblSqlCount);
             this.tabSql.Location = new System.Drawing.Point(4, 22);
@@ -394,16 +414,33 @@ namespace SpeedyNtoNAssociatePlugin
             this.lblSqlInstructions.TabIndex = 0;
             this.lblSqlInstructions.Text = "Write a SQL SELECT that returns two GUID columns (via TDS endpoint). Each row becomes one pair.";
             //
+            // splitSql
+            //
+            this.splitSql.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
+            this.splitSql.Location = new System.Drawing.Point(9, 24);
+            this.splitSql.Name = "splitSql";
+            this.splitSql.Orientation = System.Windows.Forms.Orientation.Horizontal;
+            this.splitSql.Size = new System.Drawing.Size(750, 137);
+            this.splitSql.SplitterDistance = 70;
+            this.splitSql.TabIndex = 1;
+            this.splitSql.Panel2MinSize = 40;
+            this.splitSql.Panel2Collapsed = true;
+            //
+            // splitSql.Panel1 -- editor
+            //
+            this.splitSql.Panel1.Controls.Add(this.txtSqlQuery);
+            //
+            // splitSql.Panel2 -- preview grid
+            //
+            this.splitSql.Panel2.Controls.Add(this.dgvSqlPreview);
+            //
             // txtSqlQuery
             //
-            this.txtSqlQuery.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
+            this.txtSqlQuery.Dock = System.Windows.Forms.DockStyle.Fill;
             this.txtSqlQuery.Font = new System.Drawing.Font("Consolas", 8.25F);
-            this.txtSqlQuery.Location = new System.Drawing.Point(9, 24);
-            this.txtSqlQuery.Multiline = true;
             this.txtSqlQuery.Name = "txtSqlQuery";
             this.txtSqlQuery.ScrollBars = System.Windows.Forms.RichTextBoxScrollBars.Both;
-            this.txtSqlQuery.Size = new System.Drawing.Size(750, 137);
-            this.txtSqlQuery.TabIndex = 1;
+            this.txtSqlQuery.TabIndex = 0;
             this.txtSqlQuery.WordWrap = false;
             this.txtSqlQuery.AcceptsTab = true;
             this.txtSqlQuery.TextChanged += new System.EventHandler(this.txtSqlQuery_TextChanged);
@@ -412,31 +449,26 @@ namespace SpeedyNtoNAssociatePlugin
             //
             this.dgvSqlPreview.AllowUserToAddRows = false;
             this.dgvSqlPreview.AllowUserToDeleteRows = false;
-            this.dgvSqlPreview.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
+            this.dgvSqlPreview.Dock = System.Windows.Forms.DockStyle.Fill;
             this.dgvSqlPreview.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             this.dgvSqlPreview.Columns.AddRange(new System.Windows.Forms.DataGridViewColumn[] { this.colSqlGuid1, this.colSqlGuid2 });
-            this.dgvSqlPreview.Location = new System.Drawing.Point(9, 108);
             this.dgvSqlPreview.Name = "dgvSqlPreview";
             this.dgvSqlPreview.ReadOnly = true;
             this.dgvSqlPreview.RowHeadersVisible = false;
             this.dgvSqlPreview.AutoSizeColumnsMode = System.Windows.Forms.DataGridViewAutoSizeColumnsMode.Fill;
-            this.dgvSqlPreview.Size = new System.Drawing.Size(750, 52);
-            this.dgvSqlPreview.TabIndex = 4;
-            this.dgvSqlPreview.Visible = false;
+            this.dgvSqlPreview.TabIndex = 0;
             //
             // colSqlGuid1
             //
             this.colSqlGuid1.HeaderText = "GUID 1";
             this.colSqlGuid1.Name = "colSqlGuid1";
             this.colSqlGuid1.ReadOnly = true;
-            this.colSqlGuid1.Width = 300;
             //
             // colSqlGuid2
             //
             this.colSqlGuid2.HeaderText = "GUID 2";
             this.colSqlGuid2.Name = "colSqlGuid2";
             this.colSqlGuid2.ReadOnly = true;
-            this.colSqlGuid2.Width = 300;
             //
             // btnPreviewSql
             //
@@ -669,9 +701,17 @@ namespace SpeedyNtoNAssociatePlugin
             ((System.ComponentModel.ISupportInitialize)(this.dgvCsvPreview)).EndInit();
             this.tabFetchXml.ResumeLayout(false);
             this.tabFetchXml.PerformLayout();
+            this.splitFetch.Panel1.ResumeLayout(false);
+            this.splitFetch.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)(this.splitFetch)).EndInit();
+            this.splitFetch.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.dgvFetchPreview)).EndInit();
             this.tabSql.ResumeLayout(false);
             this.tabSql.PerformLayout();
+            this.splitSql.Panel1.ResumeLayout(false);
+            this.splitSql.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)(this.splitSql)).EndInit();
+            this.splitSql.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.dgvSqlPreview)).EndInit();
             this.grpSettings.ResumeLayout(false);
             this.grpSettings.PerformLayout();
@@ -709,11 +749,13 @@ namespace SpeedyNtoNAssociatePlugin
         private System.Windows.Forms.Label lblFetchXmlCount;
         private System.Windows.Forms.Button btnPreviewFetchXml;
         private System.Windows.Forms.Button btnFormatXml;
+        private System.Windows.Forms.SplitContainer splitFetch;
         private System.Windows.Forms.DataGridView dgvFetchPreview;
         private System.Windows.Forms.DataGridViewTextBoxColumn colFetchGuid1;
         private System.Windows.Forms.DataGridViewTextBoxColumn colFetchGuid2;
         private System.Windows.Forms.TabPage tabSql;
         private System.Windows.Forms.Label lblSqlInstructions;
+        private System.Windows.Forms.SplitContainer splitSql;
         private System.Windows.Forms.RichTextBox txtSqlQuery;
         private System.Windows.Forms.DataGridView dgvSqlPreview;
         private System.Windows.Forms.DataGridViewTextBoxColumn colSqlGuid1;
