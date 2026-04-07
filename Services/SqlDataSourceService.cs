@@ -2,22 +2,27 @@ using Microsoft.Xrm.Sdk;
 using SpeedyNtoNAssociatePlugin.Models;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 
 namespace SpeedyNtoNAssociatePlugin.Services
 {
     public class SqlDataSourceService
     {
-        public Tuple<List<AssociationPair>, int> LoadFromSql(
+        /// <summary>
+        /// Returns (pairs, skipped, diagnosticLog).
+        /// </summary>
+        public Tuple<List<AssociationPair>, int, string> LoadFromSql(
             IOrganizationService service, string sqlQuery,
             string entity1LogicalName, string entity2LogicalName)
         {
             var pairs = new List<AssociationPair>();
             var seen = new HashSet<(Guid, Guid)>();
             int skipped = 0;
+            string diagnosticLog = "";
 
             var request = new OrganizationRequest("ExecutePowerBISql");
-            request["Query"] = sqlQuery;
+            request["QueryText"] = sqlQuery;
 
             OrganizationResponse response;
             try
@@ -32,79 +37,137 @@ namespace SpeedyNtoNAssociatePlugin.Services
                     "Enable it in the Power Platform Admin Center under Settings > Features.", ex);
             }
 
-            // Handle EntityCollection response (most common)
-            if (response.Results.Contains("Result") && response.Results["Result"] is EntityCollection ec)
+            // ExecutePowerBISql returns a DataSet under the "Records" key
+            if (response.Results.Contains("Records") && response.Results["Records"] is DataSet ds)
             {
+                diagnosticLog = DescribeDataSet(ds);
+                ExtractPairsFromDataSet(ds, pairs, seen, ref skipped);
+            }
+            else if (response.Results.Contains("Result") && response.Results["Result"] is EntityCollection ec)
+            {
+                diagnosticLog = $"EntityCollection with {ec.Entities.Count} entities.";
                 DataSourceService.ExtractPairs(ec, pairs, seen,
                     entity1LogicalName, entity2LogicalName, ref skipped);
             }
             else
             {
-                // Try to extract pairs from whatever format we got
-                ExtractPairsFromResponse(response, pairs, seen, ref skipped);
+                var keys = string.Join(", ", response.Results.Keys);
+                var types = string.Join(", ", response.Results.Values.Select(v => v?.GetType().FullName ?? "null"));
+                throw new InvalidOperationException(
+                    $"Unexpected ExecutePowerBISql response format.\nKeys: {keys}\nTypes: {types}\n\n" +
+                    "Please report this to the plugin developer.");
             }
 
-            return Tuple.Create(pairs, skipped);
+            return Tuple.Create(pairs, skipped, diagnosticLog);
         }
 
-        private static void ExtractPairsFromResponse(OrganizationResponse response,
-            List<AssociationPair> pairs, HashSet<(Guid, Guid)> seen, ref int skipped)
+        private static string DescribeDataSet(DataSet ds)
         {
-            foreach (var key in response.Results.Keys)
+            if (ds.Tables.Count == 0)
+                return "DataSet has 0 tables.";
+
+            var table = ds.Tables[0];
+            var colDescs = new List<string>();
+            for (int i = 0; i < table.Columns.Count; i++)
             {
-                var value = response.Results[key];
-
-                if (value is EntityCollection ec)
-                {
-                    // Found an EntityCollection under a different key
-                    DataSourceService.ExtractPairs(ec, pairs, seen, "", "", ref skipped);
-                    return;
-                }
-
-                if (value is string json && json.TrimStart().StartsWith("["))
-                {
-                    // Attempt basic JSON array parsing for GUID pairs
-                    ExtractPairsFromJson(json, pairs, seen, ref skipped);
-                    return;
-                }
+                var c = table.Columns[i];
+                colDescs.Add($"{c.ColumnName} ({c.DataType.Name})");
             }
 
-            // If we reach here, log diagnostic info
-            var keys = string.Join(", ", response.Results.Keys);
-            var types = string.Join(", ", response.Results.Values.Select(v => v?.GetType().FullName ?? "null"));
-            throw new InvalidOperationException(
-                $"Unexpected ExecutePowerBISql response format.\nKeys: {keys}\nTypes: {types}\n\n" +
-                "Please report this to the plugin developer.");
+            var desc = $"DataSet: {table.Rows.Count} rows, {table.Columns.Count} columns: [{string.Join(", ", colDescs)}]";
+
+            if (table.Rows.Count > 0)
+            {
+                var firstRowVals = new List<string>();
+                for (int i = 0; i < table.Columns.Count; i++)
+                {
+                    var val = table.Rows[0][i];
+                    firstRowVals.Add(val == DBNull.Value ? "NULL" : val.ToString());
+                }
+                desc += $" | Row 0: [{string.Join(", ", firstRowVals)}]";
+            }
+
+            return desc;
         }
 
-        private static void ExtractPairsFromJson(string json, List<AssociationPair> pairs,
+        private static void ExtractPairsFromDataSet(DataSet ds, List<AssociationPair> pairs,
             HashSet<(Guid, Guid)> seen, ref int skipped)
         {
-            // Basic JSON array parsing without external dependencies
-            // Expected format: [{"col1":"guid1","col2":"guid2",...}, ...]
-            var rows = json.Split(new[] { '}' }, StringSplitOptions.RemoveEmptyEntries);
+            if (ds.Tables.Count == 0)
+                return;
 
-            foreach (var row in rows)
+            var table = ds.Tables[0];
+
+            // Find columns that contain GUIDs by checking the first data row
+            var guidColumnIndices = new List<int>();
+
+            if (table.Rows.Count > 0)
             {
-                var guids = new List<Guid>();
-                var parts = row.Split(new[] { '"', ':', ',' }, StringSplitOptions.RemoveEmptyEntries);
-
-                foreach (var part in parts)
+                for (int col = 0; col < table.Columns.Count; col++)
                 {
-                    if (Guid.TryParse(part.Trim(), out var g) && g != Guid.Empty)
-                        guids.Add(g);
+                    var colType = table.Columns[col].DataType;
+                    if (colType == typeof(Guid))
+                    {
+                        guidColumnIndices.Add(col);
+                    }
+                    else if (colType == typeof(string))
+                    {
+                        // Check if the first row's value parses as a GUID
+                        var val = table.Rows[0][col];
+                        if (val != DBNull.Value && Guid.TryParse(val.ToString(), out _))
+                            guidColumnIndices.Add(col);
+                    }
                 }
+            }
 
-                if (guids.Count >= 2)
-                {
-                    var pair = new AssociationPair { Guid1 = guids[0], Guid2 = guids[1] };
-                    if (seen.Add(pair.NormalizedKey()))
-                        pairs.Add(pair);
-                }
-                else if (guids.Count > 0)
+            if (guidColumnIndices.Count < 2)
+            {
+                throw new InvalidOperationException(
+                    $"SQL query returned {table.Rows.Count} rows but only {guidColumnIndices.Count} GUID column(s) found. " +
+                    "The query must return at least two GUID columns.");
+            }
+
+            int col1 = guidColumnIndices[0];
+            int col2 = guidColumnIndices[1];
+
+            foreach (DataRow row in table.Rows)
+            {
+                Guid g1, g2;
+
+                var v1 = row[col1];
+                var v2 = row[col2];
+
+                if (v1 == DBNull.Value || v2 == DBNull.Value)
                 {
                     skipped++;
+                    continue;
                 }
+
+                if (v1 is Guid guid1)
+                    g1 = guid1;
+                else if (!Guid.TryParse(v1.ToString(), out g1))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                if (v2 is Guid guid2)
+                    g2 = guid2;
+                else if (!Guid.TryParse(v2.ToString(), out g2))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                if (g1 == Guid.Empty || g2 == Guid.Empty)
+                {
+                    skipped++;
+                    continue;
+                }
+
+                var pair = new AssociationPair { Guid1 = g1, Guid2 = g2 };
+                if (seen.Add(pair.NormalizedKey()))
+                    pairs.Add(pair);
             }
         }
     }

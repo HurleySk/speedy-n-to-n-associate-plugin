@@ -239,6 +239,7 @@ namespace SpeedyNtoNAssociatePlugin
             this.dgvCsvPreview.Name = "dgvCsvPreview";
             this.dgvCsvPreview.ReadOnly = true;
             this.dgvCsvPreview.RowHeadersVisible = false;
+            this.dgvCsvPreview.AutoSizeColumnsMode = System.Windows.Forms.DataGridViewAutoSizeColumnsMode.Fill;
             this.dgvCsvPreview.Size = new System.Drawing.Size(750, 132);
             this.dgvCsvPreview.TabIndex = 3;
             //
@@ -247,14 +248,14 @@ namespace SpeedyNtoNAssociatePlugin
             this.colGuid1.HeaderText = "GUID 1";
             this.colGuid1.Name = "colGuid1";
             this.colGuid1.ReadOnly = true;
-            this.colGuid1.Width = 300;
+            // Width managed by AutoSizeColumnsMode.Fill
             //
             // colGuid2
             //
             this.colGuid2.HeaderText = "GUID 2";
             this.colGuid2.Name = "colGuid2";
             this.colGuid2.ReadOnly = true;
-            this.colGuid2.Width = 300;
+            // Width managed by AutoSizeColumnsMode.Fill
             //
             // lblCsvCount
             //
@@ -301,7 +302,7 @@ namespace SpeedyNtoNAssociatePlugin
             this.txtFetchXml.Multiline = true;
             this.txtFetchXml.Name = "txtFetchXml";
             this.txtFetchXml.ScrollBars = System.Windows.Forms.RichTextBoxScrollBars.Both;
-            this.txtFetchXml.Size = new System.Drawing.Size(750, 80);
+            this.txtFetchXml.Size = new System.Drawing.Size(750, 137);
             this.txtFetchXml.TabIndex = 1;
             this.txtFetchXml.WordWrap = false;
             this.txtFetchXml.AcceptsTab = true;
@@ -318,8 +319,10 @@ namespace SpeedyNtoNAssociatePlugin
             this.dgvFetchPreview.Name = "dgvFetchPreview";
             this.dgvFetchPreview.ReadOnly = true;
             this.dgvFetchPreview.RowHeadersVisible = false;
+            this.dgvFetchPreview.AutoSizeColumnsMode = System.Windows.Forms.DataGridViewAutoSizeColumnsMode.Fill;
             this.dgvFetchPreview.Size = new System.Drawing.Size(750, 52);
             this.dgvFetchPreview.TabIndex = 5;
+            this.dgvFetchPreview.Visible = false;
             //
             // colFetchGuid1
             //
@@ -399,7 +402,7 @@ namespace SpeedyNtoNAssociatePlugin
             this.txtSqlQuery.Multiline = true;
             this.txtSqlQuery.Name = "txtSqlQuery";
             this.txtSqlQuery.ScrollBars = System.Windows.Forms.RichTextBoxScrollBars.Both;
-            this.txtSqlQuery.Size = new System.Drawing.Size(750, 80);
+            this.txtSqlQuery.Size = new System.Drawing.Size(750, 137);
             this.txtSqlQuery.TabIndex = 1;
             this.txtSqlQuery.WordWrap = false;
             this.txtSqlQuery.AcceptsTab = true;
@@ -416,8 +419,10 @@ namespace SpeedyNtoNAssociatePlugin
             this.dgvSqlPreview.Name = "dgvSqlPreview";
             this.dgvSqlPreview.ReadOnly = true;
             this.dgvSqlPreview.RowHeadersVisible = false;
+            this.dgvSqlPreview.AutoSizeColumnsMode = System.Windows.Forms.DataGridViewAutoSizeColumnsMode.Fill;
             this.dgvSqlPreview.Size = new System.Drawing.Size(750, 52);
             this.dgvSqlPreview.TabIndex = 4;
+            this.dgvSqlPreview.Visible = false;
             //
             // colSqlGuid1
             //

@@ -315,6 +315,7 @@ namespace SpeedyNtoNAssociatePlugin
         private void txtFetchXml_TextChanged(object sender, EventArgs e)
         {
             if (_suppressColorize) return;
+            StripIncomingFormatting(txtFetchXml, ref _suppressColorize);
             _colorizeTimer.Stop();
             _colorizeTimer.Start();
         }
@@ -468,6 +469,7 @@ namespace SpeedyNtoNAssociatePlugin
                     {
                         dgvFetchPreview.Rows.Add(_loadedPairs[i].Guid1.ToString(), _loadedPairs[i].Guid2.ToString());
                     }
+                    ShowPreviewGrid(txtFetchXml, dgvFetchPreview, previewCount > 0);
 
                     AppendLog($"FetchXML returned {_loadedPairs.Count:N0} pairs.");
                     if (skipped > 0)
@@ -492,6 +494,7 @@ namespace SpeedyNtoNAssociatePlugin
         private void txtSqlQuery_TextChanged(object sender, EventArgs e)
         {
             if (_suppressSqlColorize) return;
+            StripIncomingFormatting(txtSqlQuery, ref _suppressSqlColorize);
             _sqlColorizeTimer.Stop();
             _sqlColorizeTimer.Start();
         }
@@ -585,9 +588,13 @@ namespace SpeedyNtoNAssociatePlugin
                         return;
                     }
 
-                    var sqlResult = (Tuple<List<AssociationPair>, int>)args.Result;
+                    var sqlResult = (Tuple<List<AssociationPair>, int, string>)args.Result;
                     _loadedPairs = sqlResult.Item1;
                     var skipped = sqlResult.Item2;
+                    var diagnosticLog = sqlResult.Item3;
+
+                    if (!string.IsNullOrEmpty(diagnosticLog))
+                        AppendLog($"SQL response: {diagnosticLog}");
 
                     var countText = $"{_loadedPairs.Count:N0} pairs found (deduplicated).";
                     if (skipped > 0)
@@ -601,6 +608,7 @@ namespace SpeedyNtoNAssociatePlugin
                     {
                         dgvSqlPreview.Rows.Add(_loadedPairs[i].Guid1.ToString(), _loadedPairs[i].Guid2.ToString());
                     }
+                    ShowPreviewGrid(txtSqlQuery, dgvSqlPreview, previewCount > 0);
 
                     AppendLog($"SQL returned {_loadedPairs.Count:N0} pairs.");
                     if (skipped > 0)
@@ -837,6 +845,41 @@ namespace SpeedyNtoNAssociatePlugin
                                _loadedPairs != null &&
                                _loadedPairs.Count > 0 &&
                                cmbRelationship.SelectedItem != null;
+        }
+
+        private static void StripIncomingFormatting(RichTextBox rtb, ref bool suppressFlag)
+        {
+            var plain = rtb.Text;
+            if (string.IsNullOrEmpty(plain)) return;
+
+            // Strip any background colors, fonts, etc. pasted from external sources
+            suppressFlag = true;
+            var pos = rtb.SelectionStart;
+            rtb.SelectAll();
+            rtb.SelectionBackColor = rtb.BackColor;
+            rtb.SelectionFont = rtb.Font;
+            rtb.SelectionStart = Math.Min(pos, plain.Length);
+            rtb.SelectionLength = 0;
+            suppressFlag = false;
+        }
+
+        private static void ShowPreviewGrid(Control editor, DataGridView grid, bool show)
+        {
+            if (show)
+            {
+                var gridHeight = Math.Max(80, (editor.Height + grid.Height) / 2);
+                var editorHeight = editor.Bottom - editor.Top - gridHeight + grid.Height;
+                editor.Height = Math.Max(40, editorHeight);
+                grid.Top = editor.Bottom + 4;
+                grid.Height = gridHeight;
+                grid.Visible = true;
+            }
+            else
+            {
+                grid.Visible = false;
+                // Expand editor to fill the grid's space
+                editor.Height = grid.Bottom - editor.Top;
+            }
         }
 
         #endregion
