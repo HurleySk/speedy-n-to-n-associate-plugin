@@ -81,4 +81,9 @@
     <Reference Include="System.ComponentModel.Composition" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="Tests\**" />
+    <None Remove="Tests\**" />
+  </ItemGroup>
+
 </Project>
