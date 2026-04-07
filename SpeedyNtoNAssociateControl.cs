@@ -20,6 +20,7 @@ namespace SpeedyNtoNAssociatePlugin
     {
         private readonly MetadataService _metadataService = new MetadataService();
         private readonly DataSourceService _dataSourceService = new DataSourceService();
+        private readonly SqlDataSourceService _sqlDataSourceService = new SqlDataSourceService();
         private readonly AssociationEngine _engine = new AssociationEngine();
 
         // XML syntax highlighting
@@ -34,6 +35,22 @@ namespace SpeedyNtoNAssociatePlugin
         private static readonly Color XmlAttributeColor = Color.FromArgb(163, 21, 21);
         private static readonly Color XmlValueColor = Color.Red;
 
+        // SQL syntax highlighting
+        private static readonly Regex SqlKeywordRegex = new Regex(
+            @"\b(SELECT|FROM|WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|CROSS|ON|AND|OR|NOT|IN|EXISTS|BETWEEN|LIKE|IS|NULL|AS|DISTINCT|TOP|ORDER|BY|GROUP|HAVING|UNION|ALL|CASE|WHEN|THEN|ELSE|END|CAST|CONVERT|COUNT|SUM|AVG|MIN|MAX|COALESCE|ISNULL)\b",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex SqlStringRegex = new Regex(@"'[^']*'", RegexOptions.Compiled);
+        private static readonly Regex SqlNumberRegex = new Regex(@"\b\d+(\.\d+)?\b", RegexOptions.Compiled);
+        private static readonly Regex SqlCommentRegex = new Regex(@"--[^\r\n]*", RegexOptions.Compiled);
+        private static readonly Regex SqlOperatorRegex = new Regex(@"[=<>!]+|[,;().]", RegexOptions.Compiled);
+
+        private static readonly Color SqlDefaultColor = Color.Black;
+        private static readonly Color SqlKeywordColor = Color.Blue;
+        private static readonly Color SqlStringColor = Color.FromArgb(163, 21, 21);
+        private static readonly Color SqlNumberColor = Color.DarkCyan;
+        private static readonly Color SqlCommentColor = Color.Green;
+        private static readonly Color SqlOperatorColor = Color.Gray;
+
         private List<AssociationPair> _loadedPairs;
         private List<Tuple<string, string>> _allEntities;
         private List<RelationshipInfo> _allRelationships;
@@ -42,12 +59,16 @@ namespace SpeedyNtoNAssociatePlugin
         private bool _suppressEntityChanged;
         private readonly System.Windows.Forms.Timer _colorizeTimer;
         private bool _suppressColorize;
+        private readonly System.Windows.Forms.Timer _sqlColorizeTimer;
+        private bool _suppressSqlColorize;
 
         public SpeedyNtoNAssociateControl()
         {
             InitializeComponent();
             _colorizeTimer = new System.Windows.Forms.Timer { Interval = 300 };
             _colorizeTimer.Tick += (s, e) => { _colorizeTimer.Stop(); FormatAndColorize(); };
+            _sqlColorizeTimer = new System.Windows.Forms.Timer { Interval = 300 };
+            _sqlColorizeTimer.Tick += (s, e) => { _sqlColorizeTimer.Stop(); ColorizeSql(); };
         }
 
         private void SpeedyNtoNAssociateControl_Load(object sender, EventArgs e)
@@ -433,9 +454,150 @@ namespace SpeedyNtoNAssociatePlugin
                         countText += $" {skipped:N0} rows skipped (GUIDs did not match selected entities).";
 
                     lblFetchXmlCount.Text = countText;
+
+                    dgvFetchPreview.Rows.Clear();
+                    var previewCount = Math.Min(_loadedPairs.Count, 100);
+                    for (int i = 0; i < previewCount; i++)
+                    {
+                        dgvFetchPreview.Rows.Add(_loadedPairs[i].Guid1.ToString(), _loadedPairs[i].Guid2.ToString());
+                    }
+
                     AppendLog($"FetchXML returned {_loadedPairs.Count:N0} pairs.");
                     if (skipped > 0)
                         AppendLog($"Skipped {skipped:N0} rows -- GUIDs did not match {entity1Name} or {entity2Name}.");
+
+                    if (_loadedPairs.Count > 1_000_000)
+                    {
+                        MessageBox.Show(
+                            $"Warning: {_loadedPairs.Count:N0} pairs generated. This may take a long time.",
+                            "Large Dataset", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
+
+                    UpdateStartButton();
+                }
+            });
+        }
+
+        #endregion
+
+        #region SQL Data Source
+
+        private void txtSqlQuery_TextChanged(object sender, EventArgs e)
+        {
+            if (_suppressSqlColorize) return;
+            _sqlColorizeTimer.Stop();
+            _sqlColorizeTimer.Start();
+        }
+
+        private void ColorizeSql()
+        {
+            var text = txtSqlQuery.Text;
+            if (string.IsNullOrWhiteSpace(text)) return;
+
+            _suppressSqlColorize = true;
+            var selStart = txtSqlQuery.SelectionStart;
+            var selLength = txtSqlQuery.SelectionLength;
+
+            txtSqlQuery.SelectAll();
+            txtSqlQuery.SelectionColor = SqlDefaultColor;
+
+            foreach (Match m in SqlOperatorRegex.Matches(text))
+            {
+                txtSqlQuery.Select(m.Index, m.Length);
+                txtSqlQuery.SelectionColor = SqlOperatorColor;
+            }
+
+            foreach (Match m in SqlKeywordRegex.Matches(text))
+            {
+                txtSqlQuery.Select(m.Index, m.Length);
+                txtSqlQuery.SelectionColor = SqlKeywordColor;
+            }
+
+            foreach (Match m in SqlNumberRegex.Matches(text))
+            {
+                txtSqlQuery.Select(m.Index, m.Length);
+                txtSqlQuery.SelectionColor = SqlNumberColor;
+            }
+
+            foreach (Match m in SqlStringRegex.Matches(text))
+            {
+                txtSqlQuery.Select(m.Index, m.Length);
+                txtSqlQuery.SelectionColor = SqlStringColor;
+            }
+
+            foreach (Match m in SqlCommentRegex.Matches(text))
+            {
+                txtSqlQuery.Select(m.Index, m.Length);
+                txtSqlQuery.SelectionColor = SqlCommentColor;
+            }
+
+            txtSqlQuery.Select(selStart, selLength);
+            txtSqlQuery.SelectionColor = SqlDefaultColor;
+            _suppressSqlColorize = false;
+        }
+
+        private void btnPreviewSql_Click(object sender, EventArgs e)
+        {
+            ExecuteMethod(PreviewSql);
+        }
+
+        private void PreviewSql()
+        {
+            var sql = txtSqlQuery.Text.Trim();
+
+            if (string.IsNullOrEmpty(sql))
+            {
+                MessageBox.Show("Please enter a SQL query that returns two GUID columns.",
+                    "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            string entity1Name = null, entity2Name = null;
+            var rel = cmbRelationship.SelectedItem as RelationshipInfo;
+            if (rel != null)
+            {
+                entity1Name = rel.Entity1LogicalName;
+                entity2Name = rel.Entity2LogicalName;
+            }
+
+            WorkAsync(new WorkAsyncInfo
+            {
+                Message = "Executing SQL query...",
+                Work = (worker, args) =>
+                {
+                    var param = (Tuple<string, string, string>)args.Argument;
+                    args.Result = _sqlDataSourceService.LoadFromSql(Service, param.Item1, param.Item2, param.Item3);
+                },
+                AsyncArgument = Tuple.Create(sql, entity1Name ?? "", entity2Name ?? ""),
+                PostWorkCallBack = (args) =>
+                {
+                    if (args.Error != null)
+                    {
+                        MessageBox.Show(args.Error.Message, "SQL Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    var sqlResult = (Tuple<List<AssociationPair>, int>)args.Result;
+                    _loadedPairs = sqlResult.Item1;
+                    var skipped = sqlResult.Item2;
+
+                    var countText = $"{_loadedPairs.Count:N0} pairs found (deduplicated).";
+                    if (skipped > 0)
+                        countText += $" {skipped:N0} rows skipped.";
+
+                    lblSqlCount.Text = countText;
+
+                    dgvSqlPreview.Rows.Clear();
+                    var previewCount = Math.Min(_loadedPairs.Count, 100);
+                    for (int i = 0; i < previewCount; i++)
+                    {
+                        dgvSqlPreview.Rows.Add(_loadedPairs[i].Guid1.ToString(), _loadedPairs[i].Guid2.ToString());
+                    }
+
+                    AppendLog($"SQL returned {_loadedPairs.Count:N0} pairs.");
+                    if (skipped > 0)
+                        AppendLog($"Skipped {skipped:N0} rows.");
 
                     if (_loadedPairs.Count > 1_000_000)
                     {
@@ -462,7 +624,7 @@ namespace SpeedyNtoNAssociatePlugin
         {
             if (_loadedPairs == null || _loadedPairs.Count == 0)
             {
-                MessageBox.Show("No pairs loaded. Load data from CSV or FetchXML first.",
+                MessageBox.Show("No pairs loaded. Load data from CSV, FetchXML, or SQL first.",
                     "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }

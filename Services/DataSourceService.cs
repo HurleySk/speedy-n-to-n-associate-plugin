@@ -77,7 +77,7 @@ namespace SpeedyNtoNAssociatePlugin.Services
 
         #region FetchXML Pair Extraction
 
-        private static void ExtractPairs(EntityCollection response, List<AssociationPair> pairs,
+        internal static void ExtractPairs(EntityCollection response, List<AssociationPair> pairs,
             HashSet<(Guid, Guid)> seen, string entity1Name, string entity2Name, ref int skipped)
         {
             foreach (var entity in response.Entities)
@@ -139,7 +139,7 @@ namespace SpeedyNtoNAssociatePlugin.Services
             }
         }
 
-        private static List<(Guid id, string entityName)> ExtractTaggedGuids(Entity entity)
+        internal static List<(Guid id, string entityName)> ExtractTaggedGuids(Entity entity)
         {
             var guids = new List<(Guid id, string entityName)>();
 
