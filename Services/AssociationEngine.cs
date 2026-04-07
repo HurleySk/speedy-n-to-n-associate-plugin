@@ -3,9 +3,9 @@ using Microsoft.Xrm.Sdk.Messages;
 using Microsoft.Xrm.Tooling.Connector;
 using SpeedyNtoNAssociatePlugin.Models;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -15,8 +15,8 @@ namespace SpeedyNtoNAssociatePlugin.Services
 {
     public class AssociationEngine
     {
-        // Events
-        public event Action<int, int, int, int> ProgressUpdated;
+        // Events — nullable total means "still loading from source"
+        public event Action<int, int, int, int?> ProgressUpdated;
         public event Action<string> LogMessage;
 
         // Constants
@@ -27,7 +27,6 @@ namespace SpeedyNtoNAssociatePlugin.Services
         private const int MaxRetryDelayMs = 60000;
         private const int MaxThrottleBackoffMs = 30000;
         private const long ProgressUpdateIntervalMs = 100;
-        private const int ResumeFlushInterval = 50;
         private const int MaxExceptionMessageLength = 200;
 
         private const string BypassLogicParam = "BypassBusinessLogicExecution";
@@ -47,36 +46,36 @@ namespace SpeedyNtoNAssociatePlugin.Services
         private static readonly ThreadLocal<Random> Rng =
             new ThreadLocal<Random>(() => new Random());
 
+        /// <summary>
+        /// Thread-safe counters shared across all workers.
+        /// </summary>
+        private class RunState
+        {
+            public int Completed;
+            public int Duplicates;
+            public int Errors;
+            public int ThrottleBackoffMs;
+            public long LastProgressUpdateMs;
+            public int? TotalKnown;
+            public int RoundRobin = -1;
+        }
+
         public async Task RunAsync(
             IOrganizationService service,
-            List<AssociationPair> pairs,
+            IEnumerable<AssociationPair> pairsSource,
             RelationshipInfo relationship,
             int degreeOfParallelism,
-            string resumeFilePath,
+            ResumeTracker resumeTracker,
             bool bypassPlugins,
             bool verboseLogging,
             int maxRetries,
+            int batchSize,
             CancellationToken cancellationToken)
         {
-            var completedSet = LoadCompletedPairs(resumeFilePath);
-            var remaining = pairs.Where(p => !completedSet.Contains(p.NormalizedKey())).ToList();
+            var completedSet = resumeTracker.GetCompletedSet();
+            var resumedCount = completedSet.Count;
 
-            int total = remaining.Count;
-            int completed = 0;
-            int duplicates = 0;
-            int errors = 0;
-            int throttleBackoffMs = 0;
-            long lastProgressUpdateMs = 0;
-
-            if (remaining.Count == 0)
-            {
-                LogMessage?.Invoke("All pairs already completed. Nothing to do.");
-                ProgressUpdated?.Invoke(0, 0, 0, 0);
-                return;
-            }
-
-            LogMessage?.Invoke($"Total pairs: {pairs.Count}, Already completed: {completedSet.Count}, Remaining: {remaining.Count}");
-            LogMessage?.Invoke($"Resume file: {resumeFilePath}");
+            LogMessage?.Invoke($"Already completed (from resume): {resumedCount:N0}");
 
             TuneThreadPool();
 
@@ -86,56 +85,124 @@ namespace SpeedyNtoNAssociatePlugin.Services
             int poolSize = pool.Item3;
             var primaryClient = service as CrmServiceClient;
 
-            LogMessage?.Invoke($"Using {poolSize} pooled connections, parallelism: {degreeOfParallelism}");
+            LogMessage?.Invoke($"Using {poolSize} pooled connections, parallelism: {degreeOfParallelism}, batch size: {batchSize}");
 
-            int roundRobin = -1;
-            var writerLock = new object();
-            int writeCount = 0;
+            var state = new RunState();
             var sw = Stopwatch.StartNew();
 
-            var resumeDir = Path.GetDirectoryName(resumeFilePath);
-            if (!string.IsNullOrEmpty(resumeDir) && !Directory.Exists(resumeDir))
-                Directory.CreateDirectory(resumeDir);
-
-            using (var completedWriter = new StreamWriter(resumeFilePath, append: true))
+            // Bounded buffer: holds enough items for all parallel workers to have full batches plus headroom
+            int bufferCapacity = Math.Max(batchSize * degreeOfParallelism * 2, 1000);
+            using (var buffer = new BlockingCollection<AssociationPair>(bufferCapacity))
             {
-                completedWriter.AutoFlush = false;
-
-                var semaphore = new SemaphoreSlim(degreeOfParallelism);
-                var tasks = remaining.Select(async pair =>
+                // Producer: enumerate source, filter completed, feed into buffer
+                var producerTask = Task.Run(() =>
                 {
-                    await semaphore.WaitAsync(cancellationToken);
+                    int produced = 0;
                     try
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
+                        foreach (var pair in pairsSource)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            if (!completedSet.Contains(pair.NormalizedKey()))
+                            {
+                                buffer.Add(pair, cancellationToken);
+                                produced++;
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        buffer.CompleteAdding();
+                        state.TotalKnown = produced;
+                        LogMessage?.Invoke($"Source enumeration complete. {produced:N0} pairs to process (after filtering {resumedCount:N0} already completed).");
+                    }
+                }, cancellationToken);
 
-                        var currentBackoff = Volatile.Read(ref throttleBackoffMs);
+                // Consumer logic depends on batch size
+                if (batchSize <= 1)
+                {
+                    await RunSingleMode(buffer, clients, clientLocks, poolSize, primaryClient,
+                        relationship, bypassPlugins, verboseLogging, maxRetries, resumeTracker,
+                        state, sw, degreeOfParallelism, cancellationToken);
+                }
+                else
+                {
+                    await RunBatchMode(buffer, clients, clientLocks, poolSize, primaryClient,
+                        relationship, bypassPlugins, verboseLogging, maxRetries, batchSize, resumeTracker,
+                        state, sw, degreeOfParallelism, cancellationToken);
+                }
+
+                try { await producerTask; } catch (OperationCanceledException) { }
+            }
+
+            resumeTracker.FlushBatch();
+
+            ProgressUpdated?.Invoke(state.Completed, state.Duplicates, state.Errors, state.TotalKnown);
+            DisposeClonedClients(clients);
+
+            var elapsed = sw.Elapsed;
+            var successCount = state.Completed - state.Duplicates - state.Errors;
+            var throughput = elapsed.TotalSeconds > 0 ? state.Completed / elapsed.TotalSeconds : 0;
+            LogMessage?.Invoke($"Complete. {successCount:N0} associated, {state.Duplicates:N0} duplicates skipped, {state.Errors:N0} errors. Elapsed: {elapsed:mm\\:ss}. Throughput: {throughput:F1} pairs/sec");
+        }
+
+        #region Single-Request Mode (batchSize == 1)
+
+        private async Task RunSingleMode(
+            BlockingCollection<AssociationPair> buffer,
+            IOrganizationService[] clients, object[] clientLocks, int poolSize,
+            CrmServiceClient primaryClient, RelationshipInfo relationship,
+            bool bypassPlugins, bool verboseLogging, int maxRetries,
+            ResumeTracker resumeTracker, RunState state, Stopwatch sw,
+            int degreeOfParallelism, CancellationToken cancellationToken)
+        {
+            using (var semaphore = new SemaphoreSlim(degreeOfParallelism))
+            {
+            var tasks = new List<Task>();
+            int pruneThreshold = degreeOfParallelism * 10;
+
+            foreach (var pair in buffer.GetConsumingEnumerable(cancellationToken))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Prune completed tasks to avoid unbounded memory growth at 1M+ scale
+                if (tasks.Count > pruneThreshold)
+                    tasks.RemoveAll(t => t.IsCompleted);
+
+                await semaphore.WaitAsync(cancellationToken);
+
+                var capturedPair = pair;
+                tasks.Add(Task.Run(async () =>
+                {
+                    try
+                    {
+                        var currentBackoff = Volatile.Read(ref state.ThrottleBackoffMs);
                         if (currentBackoff > 0)
                             await Task.Delay(currentBackoff, cancellationToken);
 
-                        var clientIndex = (int)((uint)Interlocked.Increment(ref roundRobin) % poolSize);
+                        var clientIndex = (int)((uint)Interlocked.Increment(ref state.RoundRobin) % poolSize);
                         var client = clients[clientIndex];
-                        var request = BuildAssociateRequest(pair, relationship, bypassPlugins);
+                        var request = BuildAssociateRequest(capturedPair, relationship, bypassPlugins);
 
                         for (int attempt = 0; attempt <= maxRetries; attempt++)
                         {
                             try
                             {
                                 client.Execute(request);
-                                Interlocked.Increment(ref completed);
-                                TrackCompleted(pair, completedWriter, writerLock, ref writeCount);
-                                DecayThrottleBackoff(ref throttleBackoffMs);
+                                Interlocked.Increment(ref state.Completed);
+                                resumeTracker.TrackCompleted(capturedPair);
+                                DecayThrottleBackoff(ref state.ThrottleBackoffMs);
                                 if (verboseLogging)
-                                    LogMessage?.Invoke($"OK: {pair.Guid1} <-> {pair.Guid2}");
+                                    LogMessage?.Invoke($"OK: {capturedPair.Guid1} <-> {capturedPair.Guid2}");
                                 break;
                             }
                             catch (Exception ex) when (IsDuplicateKeyError(ex))
                             {
-                                Interlocked.Increment(ref completed);
-                                Interlocked.Increment(ref duplicates);
-                                TrackCompleted(pair, completedWriter, writerLock, ref writeCount);
+                                Interlocked.Increment(ref state.Completed);
+                                Interlocked.Increment(ref state.Duplicates);
+                                resumeTracker.TrackCompleted(capturedPair);
                                 if (verboseLogging)
-                                    LogMessage?.Invoke($"DUPLICATE: {pair.Guid1} <-> {pair.Guid2}");
+                                    LogMessage?.Invoke($"DUPLICATE: {capturedPair.Guid1} <-> {capturedPair.Guid2}");
                                 break;
                             }
                             catch (Exception ex) when (attempt < maxRetries && IsTransient(ex))
@@ -143,42 +210,246 @@ namespace SpeedyNtoNAssociatePlugin.Services
                                 var delay = Math.Min(
                                     (int)(Math.Pow(2, attempt) * BackoffBaseMs) + Rng.Value.Next(BackoffJitterMs),
                                     MaxRetryDelayMs);
-                                Interlocked.Exchange(ref throttleBackoffMs, Math.Min(delay, MaxThrottleBackoffMs));
-                                LogMessage?.Invoke($"Retry {attempt + 1}/{maxRetries} in {delay / 1000}s: {pair.Guid1} <-> {pair.Guid2}: {GetExceptionSummary(ex)}");
+                                Interlocked.Exchange(ref state.ThrottleBackoffMs, Math.Min(delay, MaxThrottleBackoffMs));
+                                LogMessage?.Invoke($"Retry {attempt + 1}/{maxRetries} in {delay / 1000}s: {capturedPair.Guid1} <-> {capturedPair.Guid2}: {GetExceptionSummary(ex)}");
                                 await Task.Delay(delay, cancellationToken);
 
                                 client = TryReconnectClient(primaryClient, clients, clientLocks, clientIndex, client, ex);
                             }
                             catch (Exception ex)
                             {
-                                Interlocked.Increment(ref completed);
-                                Interlocked.Increment(ref errors);
-                                LogMessage?.Invoke($"FAILED after {attempt + 1} attempts: {pair.Guid1} <-> {pair.Guid2}: {GetExceptionSummary(ex)}");
+                                Interlocked.Increment(ref state.Completed);
+                                Interlocked.Increment(ref state.Errors);
+                                LogMessage?.Invoke($"FAILED after {attempt + 1} attempts: {capturedPair.Guid1} <-> {capturedPair.Guid2}: {GetExceptionSummary(ex)}");
                                 break;
                             }
                         }
 
-                        TryFireProgressUpdate(sw, ref lastProgressUpdateMs, completed, duplicates, errors, total);
+                        TryFireProgressUpdate(sw, ref state.LastProgressUpdateMs, state.Completed, state.Duplicates, state.Errors, state.TotalKnown);
                     }
                     finally
                     {
                         semaphore.Release();
                     }
-                });
-
-                await Task.WhenAll(tasks);
-
-                lock (writerLock) { completedWriter.Flush(); }
+                }, cancellationToken));
             }
 
-            ProgressUpdated?.Invoke(completed, duplicates, errors, total);
-            DisposeClonedClients(clients);
-
-            var elapsed = sw.Elapsed;
-            var successCount = completed - duplicates - errors;
-            var throughput = elapsed.TotalSeconds > 0 ? completed / elapsed.TotalSeconds : 0;
-            LogMessage?.Invoke($"Complete. {successCount:N0} associated, {duplicates:N0} duplicates skipped, {errors:N0} errors. Elapsed: {elapsed:mm\\:ss}. Throughput: {throughput:F1} pairs/sec");
+            await Task.WhenAll(tasks);
+            } // using semaphore
         }
+
+        #endregion
+
+        #region Batch Mode (ExecuteMultiple)
+
+        private async Task RunBatchMode(
+            BlockingCollection<AssociationPair> buffer,
+            IOrganizationService[] clients, object[] clientLocks, int poolSize,
+            CrmServiceClient primaryClient, RelationshipInfo relationship,
+            bool bypassPlugins, bool verboseLogging, int maxRetries, int batchSize,
+            ResumeTracker resumeTracker, RunState state, Stopwatch sw,
+            int degreeOfParallelism, CancellationToken cancellationToken)
+        {
+            using (var semaphore = new SemaphoreSlim(degreeOfParallelism))
+            {
+            var tasks = new List<Task>();
+            int pruneThreshold = degreeOfParallelism * 10;
+
+            var currentBatch = new List<AssociationPair>(batchSize);
+
+            foreach (var pair in buffer.GetConsumingEnumerable(cancellationToken))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                currentBatch.Add(pair);
+
+                if (currentBatch.Count >= batchSize)
+                {
+                    var batchToProcess = currentBatch;
+                    currentBatch = new List<AssociationPair>(batchSize);
+
+                    // Prune completed tasks to avoid unbounded memory growth
+                    if (tasks.Count > pruneThreshold)
+                        tasks.RemoveAll(t => t.IsCompleted);
+
+                    await semaphore.WaitAsync(cancellationToken);
+                    tasks.Add(Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await ProcessBatch(batchToProcess, clients, clientLocks, poolSize,
+                                primaryClient, relationship, bypassPlugins, verboseLogging, maxRetries,
+                                resumeTracker, state, cancellationToken);
+                            TryFireProgressUpdate(sw, ref state.LastProgressUpdateMs, state.Completed, state.Duplicates, state.Errors, state.TotalKnown);
+                        }
+                        finally
+                        {
+                            semaphore.Release();
+                        }
+                    }, cancellationToken));
+                }
+            }
+
+            // Process remaining items in the last partial batch
+            if (currentBatch.Count > 0)
+            {
+                await semaphore.WaitAsync(cancellationToken);
+                var finalBatch = currentBatch;
+                tasks.Add(Task.Run(async () =>
+                {
+                    try
+                    {
+                        await ProcessBatch(finalBatch, clients, clientLocks, poolSize,
+                            primaryClient, relationship, bypassPlugins, verboseLogging, maxRetries,
+                            resumeTracker, state, cancellationToken);
+                        TryFireProgressUpdate(sw, ref state.LastProgressUpdateMs, state.Completed, state.Duplicates, state.Errors, state.TotalKnown);
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                }, cancellationToken));
+            }
+
+            await Task.WhenAll(tasks);
+            } // using semaphore
+        }
+
+        private async Task ProcessBatch(
+            List<AssociationPair> batch,
+            IOrganizationService[] clients, object[] clientLocks, int poolSize,
+            CrmServiceClient primaryClient, RelationshipInfo relationship,
+            bool bypassPlugins, bool verboseLogging, int maxRetries,
+            ResumeTracker resumeTracker, RunState state,
+            CancellationToken cancellationToken)
+        {
+            var currentBackoff = Volatile.Read(ref state.ThrottleBackoffMs);
+            if (currentBackoff > 0)
+                await Task.Delay(currentBackoff, cancellationToken);
+
+            var clientIndex = (int)((uint)Interlocked.Increment(ref state.RoundRobin) % poolSize);
+            var client = clients[clientIndex];
+
+            var pendingPairs = new List<AssociationPair>(batch);
+
+            for (int attempt = 0; attempt <= maxRetries && pendingPairs.Count > 0; attempt++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var multiRequest = BuildExecuteMultipleBatch(pendingPairs, relationship, bypassPlugins);
+
+                try
+                {
+                    var response = (ExecuteMultipleResponse)client.Execute(multiRequest);
+                    var retryList = new List<AssociationPair>();
+
+                    for (int i = 0; i < pendingPairs.Count; i++)
+                    {
+                        var pair = pendingPairs[i];
+                        var itemResponse = response.Responses.FirstOrDefault(r => r.RequestIndex == i);
+
+                        if (itemResponse == null || itemResponse.Fault == null)
+                        {
+                            Interlocked.Increment(ref state.Completed);
+                            resumeTracker.TrackCompleted(pair);
+                            DecayThrottleBackoff(ref state.ThrottleBackoffMs);
+                            if (verboseLogging)
+                                LogMessage?.Invoke($"OK: {pair.Guid1} <-> {pair.Guid2}");
+                        }
+                        else if (IsDuplicateKeyFault(itemResponse.Fault))
+                        {
+                            Interlocked.Increment(ref state.Completed);
+                            Interlocked.Increment(ref state.Duplicates);
+                            resumeTracker.TrackCompleted(pair);
+                            if (verboseLogging)
+                                LogMessage?.Invoke($"DUPLICATE: {pair.Guid1} <-> {pair.Guid2}");
+                        }
+                        else if (attempt < maxRetries && IsTransientFault(itemResponse.Fault))
+                        {
+                            retryList.Add(pair);
+                        }
+                        else
+                        {
+                            Interlocked.Increment(ref state.Completed);
+                            Interlocked.Increment(ref state.Errors);
+                            var msg = itemResponse.Fault.Message ?? "Unknown error";
+                            if (msg.Length > MaxExceptionMessageLength)
+                                msg = msg.Substring(0, MaxExceptionMessageLength) + "...";
+                            LogMessage?.Invoke($"FAILED: {pair.Guid1} <-> {pair.Guid2}: {msg}");
+                        }
+                    }
+
+                    if (retryList.Count == 0)
+                        break;
+
+                    var delay = Math.Min(
+                        (int)(Math.Pow(2, attempt) * BackoffBaseMs) + Rng.Value.Next(BackoffJitterMs),
+                        MaxRetryDelayMs);
+                    Interlocked.Exchange(ref state.ThrottleBackoffMs, Math.Min(delay, MaxThrottleBackoffMs));
+                    LogMessage?.Invoke($"Batch retry {attempt + 1}/{maxRetries}: {retryList.Count} transient failures, backoff {delay / 1000}s");
+                    await Task.Delay(delay, cancellationToken);
+
+                    pendingPairs = retryList;
+                }
+                catch (Exception ex) when (attempt < maxRetries && IsTransient(ex))
+                {
+                    var delay = Math.Min(
+                        (int)(Math.Pow(2, attempt) * BackoffBaseMs) + Rng.Value.Next(BackoffJitterMs),
+                        MaxRetryDelayMs);
+                    Interlocked.Exchange(ref state.ThrottleBackoffMs, Math.Min(delay, MaxThrottleBackoffMs));
+                    LogMessage?.Invoke($"Batch call failed (transient), retry {attempt + 1}/{maxRetries} in {delay / 1000}s: {GetExceptionSummary(ex)}");
+                    await Task.Delay(delay, cancellationToken);
+
+                    client = TryReconnectClient(primaryClient, clients, clientLocks, clientIndex, client, ex);
+                }
+                catch (Exception ex)
+                {
+                    foreach (var pair in pendingPairs)
+                    {
+                        Interlocked.Increment(ref state.Completed);
+                        Interlocked.Increment(ref state.Errors);
+                    }
+                    LogMessage?.Invoke($"Batch FAILED permanently ({pendingPairs.Count} pairs): {GetExceptionSummary(ex)}");
+                    break;
+                }
+            }
+        }
+
+        private static ExecuteMultipleRequest BuildExecuteMultipleBatch(
+            List<AssociationPair> pairs, RelationshipInfo relationship, bool bypassPlugins)
+        {
+            var multiRequest = new ExecuteMultipleRequest
+            {
+                Settings = new ExecuteMultipleSettings
+                {
+                    ContinueOnError = true,
+                    ReturnResponses = true
+                },
+                Requests = new OrganizationRequestCollection()
+            };
+
+            foreach (var pair in pairs)
+            {
+                multiRequest.Requests.Add(BuildAssociateRequest(pair, relationship, bypassPlugins));
+            }
+
+            return multiRequest;
+        }
+
+        private static bool IsDuplicateKeyFault(OrganizationServiceFault fault)
+        {
+            if (fault == null) return false;
+            var msg = fault.Message ?? "";
+            return msg.IndexOf(DuplicateKeyError, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsTransientFault(OrganizationServiceFault fault)
+        {
+            if (fault == null) return false;
+            var msg = fault.Message ?? "";
+            return TransientPatterns.Any(p => msg.IndexOf(p, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        #endregion
 
         public int GetRecommendedParallelism(IOrganizationService service)
         {
@@ -295,10 +566,10 @@ namespace SpeedyNtoNAssociatePlugin.Services
         }
 
         private void TryFireProgressUpdate(Stopwatch sw, ref long lastProgressUpdateMs,
-            int completed, int duplicates, int errors, int total)
+            int completed, int duplicates, int errors, int? total)
         {
             var now = sw.ElapsedMilliseconds;
-            if (now - Interlocked.Read(ref lastProgressUpdateMs) > ProgressUpdateIntervalMs || completed == total)
+            if (now - Interlocked.Read(ref lastProgressUpdateMs) > ProgressUpdateIntervalMs || (total.HasValue && completed == total.Value))
             {
                 Interlocked.Exchange(ref lastProgressUpdateMs, now);
                 ProgressUpdated?.Invoke(completed, duplicates, errors, total);
@@ -312,41 +583,6 @@ namespace SpeedyNtoNAssociatePlugin.Services
                 try { (clients[i] as IDisposable)?.Dispose(); }
                 catch { /* best effort */ }
             }
-        }
-
-        #endregion
-
-        #region Resume File
-
-        private static void TrackCompleted(AssociationPair pair, StreamWriter writer, object writerLock, ref int writeCount)
-        {
-            var ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-            lock (writerLock)
-            {
-                writer.WriteLine($"{pair.Guid1},{pair.Guid2},{ts}");
-                writeCount++;
-                if (writeCount % ResumeFlushInterval == 0)
-                    writer.Flush();
-            }
-        }
-
-        private static HashSet<(Guid, Guid)> LoadCompletedPairs(string path)
-        {
-            var set = new HashSet<(Guid, Guid)>();
-            if (!File.Exists(path)) return set;
-
-            foreach (var line in File.ReadLines(path))
-            {
-                var parts = line.Split(',');
-                if (parts.Length >= 2 &&
-                    Guid.TryParse(parts[0], out var g1) &&
-                    Guid.TryParse(parts[1], out var g2))
-                {
-                    set.Add(new AssociationPair { Guid1 = g1, Guid2 = g2 }.NormalizedKey());
-                }
-            }
-
-            return set;
         }
 
         #endregion

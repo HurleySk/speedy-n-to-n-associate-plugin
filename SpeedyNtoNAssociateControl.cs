@@ -35,6 +35,8 @@ namespace SpeedyNtoNAssociatePlugin
         private static readonly Color XmlValueColor = Color.Red;
 
         private List<AssociationPair> _loadedPairs;
+        private string _csvFilePath;
+        private string _fetchXmlText;
         private List<Tuple<string, string>> _allEntities;
         private List<RelationshipInfo> _allRelationships;
         private CancellationTokenSource _cts;
@@ -68,6 +70,8 @@ namespace SpeedyNtoNAssociatePlugin
             cmbEntity2.Enabled = false;
             cmbRelationship.Enabled = false;
             _loadedPairs = null;
+            _csvFilePath = null;
+            _fetchXmlText = null;
 
             if (Service != null)
             {
@@ -261,7 +265,9 @@ namespace SpeedyNtoNAssociatePlugin
 
                 try
                 {
+                    // Load for preview only (first 100 rows shown)
                     _loadedPairs = _dataSourceService.LoadFromCsv(ofd.FileName);
+                    _csvFilePath = ofd.FileName;
 
                     dgvCsvPreview.Rows.Clear();
                     var previewCount = Math.Min(_loadedPairs.Count, 100);
@@ -426,6 +432,7 @@ namespace SpeedyNtoNAssociatePlugin
 
                     var fetchResult = (Tuple<List<AssociationPair>, int>)args.Result;
                     _loadedPairs = fetchResult.Item1;
+                    _fetchXmlText = fetchXml;
                     var skipped = fetchResult.Item2;
 
                     var countText = $"{_loadedPairs.Count:N0} pairs found (deduplicated).";
@@ -479,18 +486,24 @@ namespace SpeedyNtoNAssociatePlugin
             var bypassPlugins = chkBypassPlugins.Checked;
             var verboseLogging = chkVerboseLog.Checked;
             var maxRetries = (int)nudRetries.Value;
+            var batchSize = (int)nudBatchSize.Value;
 
             var resumeDir = Path.Combine(Path.GetTempPath(), "SpeedyNtoN");
-            var resumePath = Path.Combine(resumeDir, $"resume_{relationship.SchemaName}.csv");
+            var resumePath = Path.Combine(resumeDir, $"resume_{relationship.SchemaName}.db");
 
-            // Check for existing resume file
+            // Check for existing resume database
+            var resumeTracker = new ResumeTracker(resumePath);
+            bool startFresh = false;
+
             if (File.Exists(resumePath))
             {
-                var lineCount = File.ReadLines(resumePath).Count();
-                if (lineCount > 0)
+                resumeTracker.Open();
+                var completedCount = resumeTracker.GetCompletedCount();
+
+                if (completedCount > 0)
                 {
                     var result = MessageBox.Show(
-                        $"A previous run for '{relationship.SchemaName}' has {lineCount:N0} completed pairs tracked.\n\n" +
+                        $"A previous run for '{relationship.SchemaName}' has {completedCount:N0} completed pairs tracked.\n\n" +
                         "Yes = Resume (skip completed pairs)\n" +
                         "No = Start fresh (clear history)\n" +
                         "Cancel = Abort",
@@ -499,27 +512,56 @@ namespace SpeedyNtoNAssociatePlugin
                         MessageBoxIcon.Question);
 
                     if (result == DialogResult.Cancel)
+                    {
+                        resumeTracker.Dispose();
                         return;
+                    }
 
                     if (result == DialogResult.No)
                     {
-                        File.Delete(resumePath);
+                        startFresh = true;
+                        resumeTracker.DeleteDatabase();
                         AppendLog("Cleared resume history. Starting fresh.");
                     }
                     else
                     {
-                        AppendLog($"Resuming -- {lineCount:N0} previously completed pairs will be skipped.");
+                        AppendLog($"Resuming -- {completedCount:N0} previously completed pairs will be skipped.");
                     }
                 }
             }
 
-            // Capture in local variable for thread safety
-            var pairsToProcess = _loadedPairs;
+            if (startFresh || !File.Exists(resumePath))
+            {
+                resumeTracker = new ResumeTracker(resumePath);
+                resumeTracker.Open();
+            }
 
-            // Reset progress
+            // Build streaming data source
+            IEnumerable<AssociationPair> pairsSource;
+            string entity1Name = relationship.Entity1LogicalName;
+            string entity2Name = relationship.Entity2LogicalName;
+
+            bool isCsvTab = tabDataSource.SelectedIndex == 0;
+            if (isCsvTab && !string.IsNullOrEmpty(_csvFilePath))
+            {
+                pairsSource = _dataSourceService.StreamFromCsv(_csvFilePath);
+                AppendLog($"Streaming pairs from CSV: {_csvFilePath}");
+            }
+            else if (!isCsvTab && !string.IsNullOrEmpty(_fetchXmlText))
+            {
+                pairsSource = _dataSourceService.StreamFromFetchXml(Service, _fetchXmlText, entity1Name, entity2Name);
+                AppendLog("Streaming pairs from FetchXML.");
+            }
+            else
+            {
+                // Fallback to loaded pairs if no streaming source available
+                pairsSource = _loadedPairs;
+            }
+
+            // Reset progress — total unknown until producer finishes
+            progressBar.Style = ProgressBarStyle.Marquee;
             progressBar.Value = 0;
-            progressBar.Maximum = pairsToProcess.Count;
-            lblProgress.Text = $"0 / {pairsToProcess.Count:N0} completed";
+            lblProgress.Text = "0 completed (loading...)";
             lblDuplicates.Text = "0 duplicates skipped";
             lblErrors.Text = "0 errors";
 
@@ -534,14 +576,17 @@ namespace SpeedyNtoNAssociatePlugin
             _engine.ProgressUpdated += OnProgressUpdated;
             _engine.LogMessage += OnLogMessage;
 
-            AppendLog($"Starting association: {pairsToProcess.Count:N0} pairs, relationship: {relationship.SchemaName}, parallelism: {parallelism}");
+            AppendLog($"Starting association: relationship: {relationship.SchemaName}, parallelism: {parallelism}, batch size: {batchSize}");
+
+            var capturedResumeTracker = resumeTracker;
 
             Task.Run(async () =>
             {
                 try
                 {
-                    await _engine.RunAsync(Service, pairsToProcess, relationship,
-                        parallelism, resumePath, bypassPlugins, verboseLogging, maxRetries, _cts.Token);
+                    await _engine.RunAsync(Service, pairsSource, relationship,
+                        parallelism, capturedResumeTracker, bypassPlugins, verboseLogging,
+                        maxRetries, batchSize, _cts.Token);
                 }
                 catch (OperationCanceledException)
                 {
@@ -553,6 +598,7 @@ namespace SpeedyNtoNAssociatePlugin
                 }
                 finally
                 {
+                    capturedResumeTracker.Dispose();
                     _engine.ProgressUpdated -= OnProgressUpdated;
                     _engine.LogMessage -= OnLogMessage;
 
@@ -563,6 +609,7 @@ namespace SpeedyNtoNAssociatePlugin
                         btnStop.Enabled = false;
                         grpRelationship.Enabled = true;
                         tabDataSource.Enabled = true;
+                        progressBar.Style = ProgressBarStyle.Blocks;
                     }));
                 }
             });
@@ -575,7 +622,7 @@ namespace SpeedyNtoNAssociatePlugin
             AppendLog("Stopping... (waiting for in-flight requests to complete)");
         }
 
-        private void OnProgressUpdated(int completed, int duplicates, int errors, int total)
+        private void OnProgressUpdated(int completed, int duplicates, int errors, int? total)
         {
             if (InvokeRequired)
             {
@@ -583,13 +630,19 @@ namespace SpeedyNtoNAssociatePlugin
                 return;
             }
 
-            if (total > 0)
+            if (total.HasValue && total.Value > 0)
             {
-                progressBar.Maximum = total;
-                progressBar.Value = Math.Min(completed, total);
+                if (progressBar.Style != ProgressBarStyle.Blocks)
+                    progressBar.Style = ProgressBarStyle.Blocks;
+                progressBar.Maximum = total.Value;
+                progressBar.Value = Math.Min(completed, total.Value);
+                lblProgress.Text = $"{completed:N0} / {total.Value:N0} completed";
+            }
+            else
+            {
+                lblProgress.Text = $"{completed:N0} completed (loading...)";
             }
 
-            lblProgress.Text = $"{completed:N0} / {total:N0} completed";
             lblDuplicates.Text = $"{duplicates:N0} duplicates skipped";
             lblErrors.Text = $"{errors:N0} errors";
         }

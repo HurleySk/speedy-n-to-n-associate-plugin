@@ -15,8 +15,20 @@ $pluginFiles = @(
     "SpeedyNtoNAssociatePlugin.pdb"
 )
 
-# NuGet dependency DLLs that need to be copied from the NuGet cache.
-$dependencyFiles = @()
+# NuGet dependency DLLs that need to be copied (SQLite for resume tracking)
+$dependencyFiles = @(
+    "Microsoft.Data.Sqlite.dll",
+    "SQLitePCLRaw.batteries_v2.dll",
+    "SQLitePCLRaw.core.dll",
+    "SQLitePCLRaw.provider.dynamic_cdecl.dll"
+)
+
+# Native runtime DLLs (SQLite native binaries) - require directory structure
+$nativeRuntimes = @(
+    @{ Source = "runtimes\win-x64\native\e_sqlite3.dll"; RelPath = "runtimes\win-x64\native" },
+    @{ Source = "runtimes\win-x86\native\e_sqlite3.dll"; RelPath = "runtimes\win-x86\native" },
+    @{ Source = "runtimes\win-arm\native\e_sqlite3.dll"; RelPath = "runtimes\win-arm\native" }
+)
 
 Write-Host "`n=== XRM ToolBox Plugin Deployment ===" -ForegroundColor Cyan
 
@@ -186,56 +198,69 @@ foreach ($file in $pluginFiles) {
     }
 }
 
-# Copy dependencies
+# Copy dependencies from build output
 if ($dependencyFiles.Count -gt 0) {
     Write-Host "`nCopying dependencies..." -ForegroundColor Green
     foreach ($dep in $dependencyFiles) {
-        $sourcePath = $dep.NuGetPath
-        $fallbackPath = Join-Path $buildPath $dep.Name
+        $sourcePath = Join-Path $buildPath $dep
 
-        # Try NuGet cache first
         if (Test-Path $sourcePath) {
             try {
                 if ($WhatIf) {
-                    Write-Host "  [WhatIf] Would copy: $($dep.Name) (from NuGet cache)" -ForegroundColor Gray
+                    Write-Host "  [WhatIf] Would copy: $dep" -ForegroundColor Gray
                 }
                 else {
                     Copy-Item $sourcePath -Destination $pluginsPath -Force -ErrorAction Stop
-                    Write-Host "  - Copied $($dep.Name) (from NuGet cache)" -ForegroundColor Green
+                    Write-Host "  - Copied $dep" -ForegroundColor Green
                 }
             }
             catch {
-                Write-Host "  - FAILED to copy $($dep.Name): $($_.Exception.Message)" -ForegroundColor Red
-                $deploymentFailed = $true
-            }
-        }
-        # Try build output as fallback
-        elseif (Test-Path $fallbackPath) {
-            Write-Host "  - NuGet cache not found, using build output for $($dep.Name)" -ForegroundColor Yellow
-            try {
-                if ($WhatIf) {
-                    Write-Host "  [WhatIf] Would copy: $($dep.Name) (from build output)" -ForegroundColor Gray
-                }
-                else {
-                    Copy-Item $fallbackPath -Destination $pluginsPath -Force -ErrorAction Stop
-                    Write-Host "  - Copied $($dep.Name) (from build output)" -ForegroundColor Green
-                }
-            }
-            catch {
-                Write-Host "  - FAILED to copy $($dep.Name): $($_.Exception.Message)" -ForegroundColor Red
+                Write-Host "  - FAILED to copy $dep`: $($_.Exception.Message)" -ForegroundColor Red
                 $deploymentFailed = $true
             }
         }
         else {
-            Write-Host "  - ERROR: $($dep.Name) not found in NuGet cache or build output!" -ForegroundColor Red
+            Write-Host "  - ERROR: $dep not found in build output!" -ForegroundColor Red
             $deploymentFailed = $true
+        }
+    }
+}
+
+# Copy native runtime DLLs (preserving directory structure)
+if ($nativeRuntimes.Count -gt 0) {
+    Write-Host "`nCopying native runtimes..." -ForegroundColor Green
+    foreach ($rt in $nativeRuntimes) {
+        $sourcePath = Join-Path $buildPath $rt.Source
+        $destDir = Join-Path $pluginsPath $rt.RelPath
+        $fileName = Split-Path $rt.Source -Leaf
+
+        if (Test-Path $sourcePath) {
+            try {
+                if ($WhatIf) {
+                    Write-Host "  [WhatIf] Would copy: $($rt.Source)" -ForegroundColor Gray
+                }
+                else {
+                    if (-not (Test-Path $destDir)) {
+                        New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+                    }
+                    Copy-Item $sourcePath -Destination $destDir -Force -ErrorAction Stop
+                    Write-Host "  - Copied $($rt.Source)" -ForegroundColor Green
+                }
+            }
+            catch {
+                Write-Host "  - FAILED to copy $fileName`: $($_.Exception.Message)" -ForegroundColor Red
+                $deploymentFailed = $true
+            }
+        }
+        else {
+            Write-Host "  - WARNING: $($rt.Source) not found (may not be needed on this platform)" -ForegroundColor Yellow
         }
     }
 }
 
 # Verify deployment
 Write-Host "`nVerifying deployment..." -ForegroundColor Green
-$allRequiredFiles = $pluginFiles + ($dependencyFiles | ForEach-Object { $_.Name })
+$allRequiredFiles = $pluginFiles + $dependencyFiles
 $allFilesPresent = $true
 
 foreach ($file in $allRequiredFiles) {

@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyTitle("Speedy N:N Associate")]
 [assembly: AssemblyDescription("Bulk associate records via N:N relationships with parallel processing")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Procentrix")]
+[assembly: AssemblyCompany("Samuel Hurley")]
 [assembly: AssemblyProduct("SpeedyNtoNAssociatePlugin")]
 [assembly: AssemblyCopyright("Copyright (c) Samuel Hurley 2026")]
 [assembly: AssemblyTrademark("")]

@@ -323,6 +323,11 @@ namespace SpeedyNtoNAssociatePlugin
             // grpSettings
             //
             this.grpSettings.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
+            this.nudBatchSize = new System.Windows.Forms.NumericUpDown();
+            this.lblBatchSize = new System.Windows.Forms.Label();
+            ((System.ComponentModel.ISupportInitialize)(this.nudBatchSize)).BeginInit();
+            this.grpSettings.Controls.Add(this.nudBatchSize);
+            this.grpSettings.Controls.Add(this.lblBatchSize);
             this.grpSettings.Controls.Add(this.chkVerboseLog);
             this.grpSettings.Controls.Add(this.nudRetries);
             this.grpSettings.Controls.Add(this.lblRetries);
@@ -339,7 +344,7 @@ namespace SpeedyNtoNAssociatePlugin
             // lblParallelism
             //
             this.lblParallelism.AutoSize = true;
-            this.lblParallelism.Location = new System.Drawing.Point(10, 22);
+            this.lblParallelism.Location = new System.Drawing.Point(145, 22);
             this.lblParallelism.Name = "lblParallelism";
             this.lblParallelism.Size = new System.Drawing.Size(114, 13);
             this.lblParallelism.TabIndex = 0;
@@ -347,7 +352,7 @@ namespace SpeedyNtoNAssociatePlugin
             //
             // nudParallelism
             //
-            this.nudParallelism.Location = new System.Drawing.Point(130, 20);
+            this.nudParallelism.Location = new System.Drawing.Point(265, 20);
             this.nudParallelism.Maximum = new decimal(new int[] { 100, 0, 0, 0 });
             this.nudParallelism.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
             this.nudParallelism.Name = "nudParallelism";
@@ -358,7 +363,7 @@ namespace SpeedyNtoNAssociatePlugin
             // lblRetries
             //
             this.lblRetries.AutoSize = true;
-            this.lblRetries.Location = new System.Drawing.Point(210, 22);
+            this.lblRetries.Location = new System.Drawing.Point(345, 22);
             this.lblRetries.Name = "lblRetries";
             this.lblRetries.Size = new System.Drawing.Size(65, 13);
             this.lblRetries.TabIndex = 2;
@@ -366,7 +371,7 @@ namespace SpeedyNtoNAssociatePlugin
             //
             // nudRetries
             //
-            this.nudRetries.Location = new System.Drawing.Point(280, 20);
+            this.nudRetries.Location = new System.Drawing.Point(415, 20);
             this.nudRetries.Maximum = new decimal(new int[] { 50, 0, 0, 0 });
             this.nudRetries.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
             this.nudRetries.Name = "nudRetries";
@@ -379,7 +384,7 @@ namespace SpeedyNtoNAssociatePlugin
             this.chkBypassPlugins.AutoSize = true;
             this.chkBypassPlugins.Checked = true;
             this.chkBypassPlugins.CheckState = System.Windows.Forms.CheckState.Checked;
-            this.chkBypassPlugins.Location = new System.Drawing.Point(400, 22);
+            this.chkBypassPlugins.Location = new System.Drawing.Point(480, 22);
             this.chkBypassPlugins.Name = "chkBypassPlugins";
             this.chkBypassPlugins.Size = new System.Drawing.Size(170, 17);
             this.chkBypassPlugins.TabIndex = 4;
@@ -391,12 +396,31 @@ namespace SpeedyNtoNAssociatePlugin
             this.chkVerboseLog.AutoSize = true;
             this.chkVerboseLog.Checked = true;
             this.chkVerboseLog.CheckState = System.Windows.Forms.CheckState.Checked;
-            this.chkVerboseLog.Location = new System.Drawing.Point(600, 22);
+            this.chkVerboseLog.Location = new System.Drawing.Point(670, 22);
             this.chkVerboseLog.Name = "chkVerboseLog";
             this.chkVerboseLog.Size = new System.Drawing.Size(100, 17);
             this.chkVerboseLog.TabIndex = 5;
             this.chkVerboseLog.Text = "Log every pair";
             this.chkVerboseLog.UseVisualStyleBackColor = true;
+            //
+            // lblBatchSize
+            //
+            this.lblBatchSize.AutoSize = true;
+            this.lblBatchSize.Location = new System.Drawing.Point(10, 22);
+            this.lblBatchSize.Name = "lblBatchSize";
+            this.lblBatchSize.Size = new System.Drawing.Size(61, 13);
+            this.lblBatchSize.TabIndex = 6;
+            this.lblBatchSize.Text = "Batch Size:";
+            //
+            // nudBatchSize
+            //
+            this.nudBatchSize.Location = new System.Drawing.Point(77, 20);
+            this.nudBatchSize.Maximum = new decimal(new int[] { 1000, 0, 0, 0 });
+            this.nudBatchSize.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
+            this.nudBatchSize.Name = "nudBatchSize";
+            this.nudBatchSize.Size = new System.Drawing.Size(55, 20);
+            this.nudBatchSize.TabIndex = 7;
+            this.nudBatchSize.Value = new decimal(new int[] { 1, 0, 0, 0 });
             //
             // grpProgress
             //
@@ -509,6 +533,7 @@ namespace SpeedyNtoNAssociatePlugin
             this.tabFetchXml.PerformLayout();
             this.grpSettings.ResumeLayout(false);
             this.grpSettings.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.nudBatchSize)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudRetries)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudParallelism)).EndInit();
             this.grpProgress.ResumeLayout(false);
@@ -557,5 +582,7 @@ namespace SpeedyNtoNAssociatePlugin
         private System.Windows.Forms.Button btnStart;
         private System.Windows.Forms.Button btnStop;
         private System.Windows.Forms.TextBox txtLog;
+        private System.Windows.Forms.NumericUpDown nudBatchSize;
+        private System.Windows.Forms.Label lblBatchSize;
     }
 }

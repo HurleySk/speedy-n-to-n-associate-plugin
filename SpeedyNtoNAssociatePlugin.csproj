@@ -15,7 +15,7 @@
     <Title>Speedy N:N Associate</Title>
     <Version>1.0.0.0</Version>
     <Authors>Samuel Hurley</Authors>
-    <Company>Procentrix</Company>
+    <Company>Samuel Hurley</Company>
     <Copyright>Copyright (c) Samuel Hurley 2026</Copyright>
     <Description>Bulk associate records via N:N relationships with parallel processing, CSV import, and FetchXML cartesian product support</Description>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
@@ -54,6 +54,9 @@
     <!-- Non-string .resx support at runtime -->
     <PackageReference Include="System.Resources.Extensions" Version="4.7.1" />
 
+    <!-- SQLite for resume tracking -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.4" />
+
   </ItemGroup>
 
   <ItemGroup>
@@ -61,6 +64,17 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
     <!-- Manually include DLL in Plugins folder without framework subfolder -->
     <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="Plugins\" />
+
+    <!-- SQLite dependencies -->
+    <None Include="$(OutputPath)\Microsoft.Data.Sqlite.dll" Pack="true" PackagePath="Plugins\" />
+    <None Include="$(OutputPath)\SQLitePCLRaw.batteries_v2.dll" Pack="true" PackagePath="Plugins\" />
+    <None Include="$(OutputPath)\SQLitePCLRaw.core.dll" Pack="true" PackagePath="Plugins\" />
+    <None Include="$(OutputPath)\SQLitePCLRaw.provider.dynamic_cdecl.dll" Pack="true" PackagePath="Plugins\" />
+
+    <!-- SQLite native binaries -->
+    <None Include="$(OutputPath)\runtimes\win-x64\native\e_sqlite3.dll" Pack="true" PackagePath="Plugins\runtimes\win-x64\native\" />
+    <None Include="$(OutputPath)\runtimes\win-x86\native\e_sqlite3.dll" Pack="true" PackagePath="Plugins\runtimes\win-x86\native\" />
+    <None Include="$(OutputPath)\runtimes\win-arm\native\e_sqlite3.dll" Pack="true" PackagePath="Plugins\runtimes\win-arm\native\" />
   </ItemGroup>
 
   <ItemGroup>
