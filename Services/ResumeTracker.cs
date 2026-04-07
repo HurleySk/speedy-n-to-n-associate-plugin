@@ -140,6 +140,9 @@ namespace SpeedyNtoNAssociatePlugin.Services
         {
             Dispose();
 
+            // Clear SQLite's internal connection pool so the file handle is released
+            SqliteConnection.ClearAllPools();
+
             if (System.IO.File.Exists(_dbPath))
                 System.IO.File.Delete(_dbPath);
 
