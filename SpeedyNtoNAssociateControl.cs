@@ -4,8 +4,11 @@ using SpeedyNtoNAssociatePlugin.Models;
 using SpeedyNtoNAssociatePlugin.Services;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -19,16 +22,32 @@ namespace SpeedyNtoNAssociatePlugin
         private readonly DataSourceService _dataSourceService = new DataSourceService();
         private readonly AssociationEngine _engine = new AssociationEngine();
 
+        // XML syntax highlighting
+        private static readonly Regex XmlPunctuationRegex = new Regex(@"[<>/=]", RegexOptions.Compiled);
+        private static readonly Regex XmlTagRegex = new Regex(@"(?<=</?)\w[\w\-]*", RegexOptions.Compiled);
+        private static readonly Regex XmlAttributeRegex = new Regex(@"\b(\w[\w\-]*)(?=\s*=)", RegexOptions.Compiled);
+        private static readonly Regex XmlValueRegex = new Regex("\"[^\"]*\"", RegexOptions.Compiled);
+
+        private static readonly Color XmlDefaultColor = Color.Black;
+        private static readonly Color XmlPunctuationColor = Color.Gray;
+        private static readonly Color XmlTagColor = Color.Blue;
+        private static readonly Color XmlAttributeColor = Color.FromArgb(163, 21, 21);
+        private static readonly Color XmlValueColor = Color.Red;
+
         private List<AssociationPair> _loadedPairs;
         private List<Tuple<string, string>> _allEntities;
         private List<RelationshipInfo> _allRelationships;
         private CancellationTokenSource _cts;
         private bool _isRunning;
         private bool _suppressEntityChanged;
+        private readonly System.Windows.Forms.Timer _colorizeTimer;
+        private bool _suppressColorize;
 
         public SpeedyNtoNAssociateControl()
         {
             InitializeComponent();
+            _colorizeTimer = new System.Windows.Forms.Timer { Interval = 300 };
+            _colorizeTimer.Tick += (s, e) => { _colorizeTimer.Stop(); FormatAndColorize(); };
         }
 
         private void SpeedyNtoNAssociateControl_Load(object sender, EventArgs e)
@@ -266,6 +285,102 @@ namespace SpeedyNtoNAssociatePlugin
 
         #region FetchXML Data Source
 
+        private void txtFetchXml_TextChanged(object sender, EventArgs e)
+        {
+            if (_suppressColorize) return;
+            _colorizeTimer.Stop();
+            _colorizeTimer.Start();
+        }
+
+        private void FormatAndColorize()
+        {
+            var xml = txtFetchXml.Text.Trim();
+            if (string.IsNullOrEmpty(xml)) return;
+
+            try
+            {
+                var doc = XDocument.Parse(xml);
+                _suppressColorize = true;
+                txtFetchXml.Text = doc.ToString();
+                _suppressColorize = false;
+                ColorizeXml();
+            }
+            catch
+            {
+                // If XML is invalid, just colorize what's there
+                ColorizeXml();
+            }
+        }
+
+        private void btnFormatXml_Click(object sender, EventArgs e)
+        {
+            var xml = txtFetchXml.Text.Trim();
+            if (string.IsNullOrEmpty(xml))
+            {
+                MessageBox.Show("No FetchXML to validate.", "Validation",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            try
+            {
+                var doc = XDocument.Parse(xml);
+                _suppressColorize = true;
+                txtFetchXml.Text = doc.ToString();
+                _suppressColorize = false;
+                ColorizeXml();
+                MessageBox.Show("FetchXML is valid.", "Validation",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                AppendLog("FetchXML validated successfully.");
+            }
+            catch (System.Xml.XmlException ex)
+            {
+                MessageBox.Show($"Invalid XML at line {ex.LineNumber}, position {ex.LinePosition}:\n\n{ex.Message}",
+                    "XML Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void ColorizeXml()
+        {
+            var text = txtFetchXml.Text;
+            if (string.IsNullOrWhiteSpace(text)) return;
+
+            _suppressColorize = true;
+            var selStart = txtFetchXml.SelectionStart;
+            var selLength = txtFetchXml.SelectionLength;
+
+            txtFetchXml.SelectAll();
+            txtFetchXml.SelectionColor = XmlDefaultColor;
+
+            foreach (Match m in XmlPunctuationRegex.Matches(text))
+            {
+                txtFetchXml.Select(m.Index, m.Length);
+                txtFetchXml.SelectionColor = XmlPunctuationColor;
+            }
+
+            foreach (Match m in XmlTagRegex.Matches(text))
+            {
+                txtFetchXml.Select(m.Index, m.Length);
+                txtFetchXml.SelectionColor = XmlTagColor;
+            }
+
+            foreach (Match m in XmlAttributeRegex.Matches(text))
+            {
+                txtFetchXml.Select(m.Groups[1].Index, m.Groups[1].Length);
+                txtFetchXml.SelectionColor = XmlAttributeColor;
+            }
+
+            foreach (Match m in XmlValueRegex.Matches(text))
+            {
+                txtFetchXml.Select(m.Index, m.Length);
+                txtFetchXml.SelectionColor = XmlValueColor;
+            }
+
+            txtFetchXml.Select(selStart, selLength);
+            txtFetchXml.SelectionColor = XmlDefaultColor;
+            _suppressColorize = false;
+        }
+
         private void btnPreviewFetchXml_Click(object sender, EventArgs e)
         {
             ExecuteMethod(PreviewFetchXml);
@@ -309,8 +424,9 @@ namespace SpeedyNtoNAssociatePlugin
                         return;
                     }
 
-                    _loadedPairs = (List<AssociationPair>)args.Result;
-                    var skipped = _dataSourceService.SkippedRows;
+                    var fetchResult = (Tuple<List<AssociationPair>, int>)args.Result;
+                    _loadedPairs = fetchResult.Item1;
+                    var skipped = fetchResult.Item2;
 
                     var countText = $"{_loadedPairs.Count:N0} pairs found (deduplicated).";
                     if (skipped > 0)
@@ -370,7 +486,7 @@ namespace SpeedyNtoNAssociatePlugin
             // Check for existing resume file
             if (File.Exists(resumePath))
             {
-                var lineCount = File.ReadAllLines(resumePath).Length;
+                var lineCount = File.ReadLines(resumePath).Count();
                 if (lineCount > 0)
                 {
                     var result = MessageBox.Show(

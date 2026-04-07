@@ -10,6 +10,8 @@ namespace SpeedyNtoNAssociatePlugin.Services
 {
     public class DataSourceService
     {
+        private const int DefaultFetchXmlPageSize = 5000;
+
         public List<AssociationPair> LoadFromCsv(string filePath)
         {
             var pairs = new List<AssociationPair>();
@@ -22,7 +24,7 @@ namespace SpeedyNtoNAssociatePlugin.Services
             {
                 var firstParts = lines[0].Split(',');
                 if (firstParts.Length >= 2 &&
-                    !Guid.TryParse(firstParts[0].Trim().Trim('"'), out _))
+                    !Guid.TryParse(CleanGuidField(firstParts[0]), out _))
                 {
                     startLine = 1;
                 }
@@ -33,24 +35,22 @@ namespace SpeedyNtoNAssociatePlugin.Services
                 var parts = lines[i].Split(',');
                 if (parts.Length < 2) continue;
 
-                if (!Guid.TryParse(parts[0].Trim().Trim('"'), out var g1) ||
-                    !Guid.TryParse(parts[1].Trim().Trim('"'), out var g2))
+                if (!Guid.TryParse(CleanGuidField(parts[0]), out var g1) ||
+                    !Guid.TryParse(CleanGuidField(parts[1]), out var g2))
                     continue;
 
                 if (g1 == Guid.Empty || g2 == Guid.Empty)
                     continue;
 
                 var pair = new AssociationPair { Guid1 = g1, Guid2 = g2 };
-                var key = pair.NormalizedKey();
-
-                if (seen.Add(key))
+                if (seen.Add(pair.NormalizedKey()))
                     pairs.Add(pair);
             }
 
             return pairs;
         }
 
-        public List<AssociationPair> LoadFromFetchXml(
+        public Tuple<List<AssociationPair>, int> LoadFromFetchXml(
             IOrganizationService service, string fetchXml,
             string entity1LogicalName, string entity2LogicalName)
         {
@@ -58,13 +58,11 @@ namespace SpeedyNtoNAssociatePlugin.Services
             var seen = new HashSet<(Guid, Guid)>();
             int skipped = 0;
 
-            // Ensure count attribute exists for paging support
             fetchXml = EnsureFetchCount(fetchXml);
 
             var response = service.RetrieveMultiple(new Microsoft.Xrm.Sdk.Query.FetchExpression(fetchXml));
             ExtractPairs(response, pairs, seen, entity1LogicalName, entity2LogicalName, ref skipped);
 
-            // Handle paging with proper XML manipulation
             int page = 2;
             while (response.MoreRecords)
             {
@@ -74,46 +72,17 @@ namespace SpeedyNtoNAssociatePlugin.Services
                 page++;
             }
 
-            SkippedRows = skipped;
-            return pairs;
+            return Tuple.Create(pairs, skipped);
         }
 
-        public int SkippedRows { get; private set; }
+        #region FetchXML Pair Extraction
 
         private static void ExtractPairs(EntityCollection response, List<AssociationPair> pairs,
             HashSet<(Guid, Guid)> seen, string entity1Name, string entity2Name, ref int skipped)
         {
             foreach (var entity in response.Entities)
             {
-                // Collect all GUIDs tagged with their source entity name
-                var taggedGuids = new List<(Guid id, string entityName)>();
-
-                // The entity's own ID belongs to entity.LogicalName
-                if (entity.Id != Guid.Empty)
-                    taggedGuids.Add((entity.Id, entity.LogicalName));
-
-                foreach (var attr in entity.Attributes)
-                {
-                    if (attr.Value is Guid g && g != Guid.Empty)
-                    {
-                        // Plain Guid attribute -- belongs to the primary entity
-                        if (!taggedGuids.Any(t => t.id == g))
-                            taggedGuids.Add((g, entity.LogicalName));
-                    }
-                    else if (attr.Value is AliasedValue av)
-                    {
-                        if (av.Value is Guid ag && ag != Guid.Empty)
-                        {
-                            if (!taggedGuids.Any(t => t.id == ag))
-                                taggedGuids.Add((ag, av.EntityLogicalName));
-                        }
-                    }
-                    else if (attr.Value is EntityReference er && er.Id != Guid.Empty)
-                    {
-                        if (!taggedGuids.Any(t => t.id == er.Id))
-                            taggedGuids.Add((er.Id, er.LogicalName));
-                    }
-                }
+                var taggedGuids = ExtractTaggedGuids(entity);
 
                 // If no entity filter specified, just take the first two GUIDs
                 if (string.IsNullOrEmpty(entity1Name) || string.IsNullOrEmpty(entity2Name))
@@ -121,8 +90,7 @@ namespace SpeedyNtoNAssociatePlugin.Services
                     if (taggedGuids.Count >= 2)
                     {
                         var pair = new AssociationPair { Guid1 = taggedGuids[0].id, Guid2 = taggedGuids[1].id };
-                        var key = pair.NormalizedKey();
-                        if (seen.Add(key))
+                        if (seen.Add(pair.NormalizedKey()))
                             pairs.Add(pair);
                     }
                     else
@@ -161,8 +129,7 @@ namespace SpeedyNtoNAssociatePlugin.Services
                 if (guid1.HasValue && guid2.HasValue)
                 {
                     var pair = new AssociationPair { Guid1 = guid1.Value, Guid2 = guid2.Value };
-                    var key = pair.NormalizedKey();
-                    if (seen.Add(key))
+                    if (seen.Add(pair.NormalizedKey()))
                         pairs.Add(pair);
                 }
                 else
@@ -172,6 +139,39 @@ namespace SpeedyNtoNAssociatePlugin.Services
             }
         }
 
+        private static List<(Guid id, string entityName)> ExtractTaggedGuids(Entity entity)
+        {
+            var guids = new List<(Guid id, string entityName)>();
+
+            if (entity.Id != Guid.Empty)
+                guids.Add((entity.Id, entity.LogicalName));
+
+            foreach (var attr in entity.Attributes)
+            {
+                if (attr.Value is Guid g && g != Guid.Empty)
+                {
+                    if (!guids.Any(t => t.id == g))
+                        guids.Add((g, entity.LogicalName));
+                }
+                else if (attr.Value is AliasedValue av && av.Value is Guid ag && ag != Guid.Empty)
+                {
+                    if (!guids.Any(t => t.id == ag))
+                        guids.Add((ag, av.EntityLogicalName));
+                }
+                else if (attr.Value is EntityReference er && er.Id != Guid.Empty)
+                {
+                    if (!guids.Any(t => t.id == er.Id))
+                        guids.Add((er.Id, er.LogicalName));
+                }
+            }
+
+            return guids;
+        }
+
+        #endregion
+
+        #region FetchXML Paging
+
         private static string EnsureFetchCount(string fetchXml)
         {
             try
@@ -180,11 +180,11 @@ namespace SpeedyNtoNAssociatePlugin.Services
                 var fetchElement = doc.Root;
                 if (fetchElement != null && fetchElement.Attribute("count") == null)
                 {
-                    fetchElement.SetAttributeValue("count", "5000");
+                    fetchElement.SetAttributeValue("count", DefaultFetchXmlPageSize.ToString());
                 }
                 return doc.ToString(SaveOptions.DisableFormatting);
             }
-            catch
+            catch (System.Xml.XmlException)
             {
                 return fetchXml;
             }
@@ -203,10 +203,18 @@ namespace SpeedyNtoNAssociatePlugin.Services
                 }
                 return doc.ToString(SaveOptions.DisableFormatting);
             }
-            catch
+            catch (System.Xml.XmlException)
             {
                 return fetchXml;
             }
         }
+
+        #endregion
+
+        #region Helpers
+
+        private static string CleanGuidField(string value) => value.Trim().Trim('"');
+
+        #endregion
     }
 }

@@ -36,7 +36,7 @@ namespace SpeedyNtoNAssociatePlugin
             this.txtCsvPath = new System.Windows.Forms.TextBox();
             this.tabFetchXml = new System.Windows.Forms.TabPage();
             this.lblFetchInstructions = new System.Windows.Forms.Label();
-            this.txtFetchXml = new System.Windows.Forms.TextBox();
+            this.txtFetchXml = new System.Windows.Forms.RichTextBox();
             this.lblFetchXmlCount = new System.Windows.Forms.Label();
             this.btnPreviewFetchXml = new System.Windows.Forms.Button();
             this.grpSettings = new System.Windows.Forms.GroupBox();
@@ -251,9 +251,11 @@ namespace SpeedyNtoNAssociatePlugin
             //
             // tabFetchXml
             //
+            this.btnFormatXml = new System.Windows.Forms.Button();
             this.tabFetchXml.Controls.Add(this.lblFetchInstructions);
             this.tabFetchXml.Controls.Add(this.txtFetchXml);
             this.tabFetchXml.Controls.Add(this.lblFetchXmlCount);
+            this.tabFetchXml.Controls.Add(this.btnFormatXml);
             this.tabFetchXml.Controls.Add(this.btnPreviewFetchXml);
             this.tabFetchXml.Location = new System.Drawing.Point(4, 22);
             this.tabFetchXml.Name = "tabFetchXml";
@@ -280,10 +282,12 @@ namespace SpeedyNtoNAssociatePlugin
             this.txtFetchXml.Location = new System.Drawing.Point(9, 24);
             this.txtFetchXml.Multiline = true;
             this.txtFetchXml.Name = "txtFetchXml";
-            this.txtFetchXml.ScrollBars = System.Windows.Forms.ScrollBars.Both;
+            this.txtFetchXml.ScrollBars = System.Windows.Forms.RichTextBoxScrollBars.Both;
             this.txtFetchXml.Size = new System.Drawing.Size(750, 137);
             this.txtFetchXml.TabIndex = 1;
             this.txtFetchXml.WordWrap = false;
+            this.txtFetchXml.AcceptsTab = true;
+            this.txtFetchXml.TextChanged += new System.EventHandler(this.txtFetchXml_TextChanged);
             //
             // btnPreviewFetchXml
             //
@@ -296,11 +300,22 @@ namespace SpeedyNtoNAssociatePlugin
             this.btnPreviewFetchXml.UseVisualStyleBackColor = true;
             this.btnPreviewFetchXml.Click += new System.EventHandler(this.btnPreviewFetchXml_Click);
             //
+            // btnFormatXml
+            //
+            this.btnFormatXml.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
+            this.btnFormatXml.Location = new System.Drawing.Point(135, 165);
+            this.btnFormatXml.Name = "btnFormatXml";
+            this.btnFormatXml.Size = new System.Drawing.Size(120, 23);
+            this.btnFormatXml.TabIndex = 4;
+            this.btnFormatXml.Text = "Validate";
+            this.btnFormatXml.UseVisualStyleBackColor = true;
+            this.btnFormatXml.Click += new System.EventHandler(this.btnFormatXml_Click);
+            //
             // lblFetchXmlCount
             //
             this.lblFetchXmlCount.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
             this.lblFetchXmlCount.AutoSize = true;
-            this.lblFetchXmlCount.Location = new System.Drawing.Point(135, 170);
+            this.lblFetchXmlCount.Location = new System.Drawing.Point(261, 170);
             this.lblFetchXmlCount.Name = "lblFetchXmlCount";
             this.lblFetchXmlCount.Size = new System.Drawing.Size(0, 13);
             this.lblFetchXmlCount.TabIndex = 3;
@@ -523,9 +538,10 @@ namespace SpeedyNtoNAssociatePlugin
         private System.Windows.Forms.TextBox txtCsvPath;
         private System.Windows.Forms.TabPage tabFetchXml;
         private System.Windows.Forms.Label lblFetchInstructions;
-        private System.Windows.Forms.TextBox txtFetchXml;
+        private System.Windows.Forms.RichTextBox txtFetchXml;
         private System.Windows.Forms.Label lblFetchXmlCount;
         private System.Windows.Forms.Button btnPreviewFetchXml;
+        private System.Windows.Forms.Button btnFormatXml;
         private System.Windows.Forms.GroupBox grpSettings;
         private System.Windows.Forms.CheckBox chkBypassPlugins;
         private System.Windows.Forms.CheckBox chkVerboseLog;
