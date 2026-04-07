@@ -1,0 +1,70 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Library</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+
+    <!-- Avoid duplicate attributes if you have Properties/AssemblyInfo.cs -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+
+    <!-- If any .resx has non-string entries (icons/images), keep this true -->
+    <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
+
+    <AssemblyName>SpeedyNtoNAssociatePlugin</AssemblyName>
+    <RootNamespace>SpeedyNtoNAssociatePlugin</RootNamespace>
+    <Title>Speedy N:N Associate</Title>
+    <Version>1.0.0.0</Version>
+    <Authors>Samuel Hurley</Authors>
+    <Company>Procentrix</Company>
+    <Copyright>Copyright (c) Samuel Hurley 2026</Copyright>
+    <Description>Bulk associate records via N:N relationships with parallel processing, CSV import, and FetchXML cartesian product support</Description>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+
+    <!-- Suppress framework folder in package -->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <!-- NU5100/NU5128: expected for XrmToolBox plugins (DLLs go in Plugins/, not lib/) -->
+    <NoWarn>$(NoWarn);NU5100;NU5128</NoWarn>
+
+    <!-- NuGet Package Metadata -->
+    <PackageProjectUrl>https://github.com/HurleySk/speedy-n-to-n-associate-plugin</PackageProjectUrl>
+    <PackageIcon>icon-128.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>XrmToolBox;Dynamics365;Dataverse;PowerPlatform</PackageTags>
+    <PackageReleaseNotes>Initial release</PackageReleaseNotes>
+    <RepositoryUrl>https://github.com/HurleySk/speedy-n-to-n-associate-plugin</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- XrmToolBox plugin infrastructure -->
+    <PackageReference Include="XrmToolBoxPackage" Version="1.2025.7.71" />
+
+    <!-- Connection lib (includes WinForms login control) -->
+    <PackageReference Include="MscrmTools.Xrm.Connection" Version="1.2025.7.63" />
+
+    <!-- Dynamics 365 / Dataverse SDK -->
+    <PackageReference Include="Microsoft.CrmSdk.CoreAssemblies" Version="9.0.2.59" />
+    <PackageReference Include="Microsoft.CrmSdk.Deployment" Version="9.0.2.34" />
+    <PackageReference Include="Microsoft.CrmSdk.XrmTooling.CoreAssembly" Version="9.1.1.65" />
+
+    <!-- SDK tools (build-time only) -->
+    <PackageReference Include="Microsoft.CrmSdk.CoreTools" Version="9.0.3.1" PrivateAssets="All" />
+
+    <!-- Non-string .resx support at runtime -->
+    <PackageReference Include="System.Resources.Extensions" Version="4.7.1" />
+
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Resources\icon-128.png" Pack="true" PackagePath="\" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <!-- Manually include DLL in Plugins folder without framework subfolder -->
+    <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="Plugins\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.ComponentModel.Composition" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,46 @@
+name: Strip Claude Co-Authored-By
+
+on:
+  push:
+    branches:
+      - '**'
+
+permissions:
+  contents: write
+
+jobs:
+  strip-coauthor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for Claude co-author lines
+        id: check
+        run: |
+          if git log --format='%B' | grep -qi 'Co-Authored-By.*Claude'; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node.js
+        if: steps.check.outputs.found == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install and run de-claude
+        if: steps.check.outputs.found == 'true'
+        run: |
+          npm install -g de-claude
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          de-claude clean --all --yes
+
+      - name: Force push cleaned history
+        if: steps.check.outputs.found == 'true'
+        run: |
+          git push --force-with-lease origin ${{ github.ref_name }}
