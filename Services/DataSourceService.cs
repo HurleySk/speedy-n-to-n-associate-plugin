@@ -68,7 +68,9 @@ namespace SpeedyNtoNAssociatePlugin.Services
             fetchXml = EnsureFetchCount(fetchXml);
 
             var response = service.RetrieveMultiple(new Microsoft.Xrm.Sdk.Query.FetchExpression(fetchXml));
-            foreach (var pair in ExtractPairsFromPage(response, seen, entity1LogicalName, entity2LogicalName, ref skipped))
+            var pagePairs = new List<AssociationPair>();
+            ExtractPairs(response, pagePairs, seen, entity1LogicalName, entity2LogicalName, ref skipped);
+            foreach (var pair in pagePairs)
                 yield return pair;
 
             int page = 2;
@@ -76,7 +78,9 @@ namespace SpeedyNtoNAssociatePlugin.Services
             {
                 var pagedFetch = SetPagingAttributes(fetchXml, response.PagingCookie, page);
                 response = service.RetrieveMultiple(new Microsoft.Xrm.Sdk.Query.FetchExpression(pagedFetch));
-                foreach (var pair in ExtractPairsFromPage(response, seen, entity1LogicalName, entity2LogicalName, ref skipped))
+                pagePairs = new List<AssociationPair>();
+                ExtractPairs(response, pagePairs, seen, entity1LogicalName, entity2LogicalName, ref skipped);
+                foreach (var pair in pagePairs)
                     yield return pair;
                 page++;
             }
@@ -90,39 +94,7 @@ namespace SpeedyNtoNAssociatePlugin.Services
 
         public List<AssociationPair> LoadFromCsv(string filePath)
         {
-            var pairs = new List<AssociationPair>();
-            var seen = new HashSet<(Guid, Guid)>();
-            var lines = File.ReadAllLines(filePath);
-
-            int startLine = 0;
-            if (lines.Length > 0)
-            {
-                var firstParts = lines[0].Split(',');
-                if (firstParts.Length >= 2 &&
-                    !Guid.TryParse(CleanGuidField(firstParts[0]), out _))
-                {
-                    startLine = 1;
-                }
-            }
-
-            for (int i = startLine; i < lines.Length; i++)
-            {
-                var parts = lines[i].Split(',');
-                if (parts.Length < 2) continue;
-
-                if (!Guid.TryParse(CleanGuidField(parts[0]), out var g1) ||
-                    !Guid.TryParse(CleanGuidField(parts[1]), out var g2))
-                    continue;
-
-                if (g1 == Guid.Empty || g2 == Guid.Empty)
-                    continue;
-
-                var pair = new AssociationPair { Guid1 = g1, Guid2 = g2 };
-                if (seen.Add(pair.NormalizedKey()))
-                    pairs.Add(pair);
-            }
-
-            return pairs;
+            return StreamFromCsv(filePath).ToList();
         }
 
         public Tuple<List<AssociationPair>, int> LoadFromFetchXml(
@@ -153,72 +125,6 @@ namespace SpeedyNtoNAssociatePlugin.Services
         #endregion
 
         #region FetchXML Pair Extraction
-
-        private static List<AssociationPair> ExtractPairsFromPage(EntityCollection response,
-            HashSet<(Guid, Guid)> seen, string entity1Name, string entity2Name, ref int skipped)
-        {
-            var results = new List<AssociationPair>();
-
-            foreach (var entity in response.Entities)
-            {
-                var taggedGuids = ExtractTaggedGuids(entity);
-                AssociationPair pair = null;
-
-                if (string.IsNullOrEmpty(entity1Name) || string.IsNullOrEmpty(entity2Name))
-                {
-                    if (taggedGuids.Count >= 2)
-                    {
-                        pair = new AssociationPair { Guid1 = taggedGuids[0].id, Guid2 = taggedGuids[1].id };
-                    }
-                    else
-                    {
-                        skipped++;
-                        continue;
-                    }
-                }
-                else
-                {
-                    Guid? guid1 = null, guid2 = null;
-
-                    foreach (var tg in taggedGuids)
-                    {
-                        if (!guid1.HasValue && tg.entityName == entity1Name)
-                            guid1 = tg.id;
-                        else if (!guid2.HasValue && tg.entityName == entity2Name)
-                            guid2 = tg.id;
-
-                        if (guid1.HasValue && guid2.HasValue) break;
-                    }
-
-                    if (entity1Name == entity2Name && guid1.HasValue && !guid2.HasValue)
-                    {
-                        foreach (var tg in taggedGuids)
-                        {
-                            if (tg.entityName == entity2Name && tg.id != guid1.Value)
-                            {
-                                guid2 = tg.id;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (guid1.HasValue && guid2.HasValue)
-                    {
-                        pair = new AssociationPair { Guid1 = guid1.Value, Guid2 = guid2.Value };
-                    }
-                    else
-                    {
-                        skipped++;
-                        continue;
-                    }
-                }
-
-                if (pair != null && seen.Add(pair.NormalizedKey()))
-                    results.Add(pair);
-            }
-
-            return results;
-        }
 
         internal static void ExtractPairs(EntityCollection response, List<AssociationPair> pairs,
             HashSet<(Guid, Guid)> seen, string entity1Name, string entity2Name, ref int skipped)

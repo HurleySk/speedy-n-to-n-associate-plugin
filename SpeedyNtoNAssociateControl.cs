@@ -54,7 +54,7 @@ namespace SpeedyNtoNAssociatePlugin
         private List<AssociationPair> _loadedPairs;
         private string _csvFilePath;
         private string _fetchXmlText;
-        private List<Tuple<string, string>> _allEntities;
+        private List<EntityInfo> _allEntities;
         private List<RelationshipInfo> _allRelationships;
         private CancellationTokenSource _cts;
         private bool _isRunning;
@@ -144,9 +144,9 @@ namespace SpeedyNtoNAssociatePlugin
                         return;
                     }
 
-                    var result = (Tuple<List<Tuple<string, string>>, List<RelationshipInfo>>)args.Result;
-                    _allEntities = result.Item1;
-                    _allRelationships = result.Item2;
+                    var result = (MetadataResult)args.Result;
+                    _allEntities = result.Entities;
+                    _allRelationships = result.Relationships;
 
                     var ntoNEntities = new HashSet<string>();
                     foreach (var rel in _allRelationships)
@@ -156,7 +156,7 @@ namespace SpeedyNtoNAssociatePlugin
                     }
 
                     var filteredEntities = _allEntities
-                        .Where(e => ntoNEntities.Contains(e.Item1))
+                        .Where(e => ntoNEntities.Contains(e.LogicalName))
                         .ToList();
 
                     _suppressEntityChanged = true;
@@ -165,7 +165,7 @@ namespace SpeedyNtoNAssociatePlugin
 
                     foreach (var entity in filteredEntities)
                     {
-                        cmbEntity1.Items.Add($"{entity.Item2} ({entity.Item1})");
+                        cmbEntity1.Items.Add($"{entity.DisplayName} ({entity.LogicalName})");
                     }
 
                     cmbEntity1.Tag = filteredEntities;
@@ -187,10 +187,10 @@ namespace SpeedyNtoNAssociatePlugin
 
             if (changedCombo.SelectedIndex < 0) return;
 
-            var sourceEntities = changedCombo.Tag as List<Tuple<string, string>>;
+            var sourceEntities = changedCombo.Tag as List<EntityInfo>;
             if (sourceEntities == null) return;
 
-            var selectedEntity = sourceEntities[changedCombo.SelectedIndex].Item1;
+            var selectedEntity = sourceEntities[changedCombo.SelectedIndex].LogicalName;
 
             var relatedEntityNames = new HashSet<string>();
             foreach (var rel in _allRelationships)
@@ -202,14 +202,14 @@ namespace SpeedyNtoNAssociatePlugin
             }
 
             var filteredEntities = _allEntities
-                .Where(ent => relatedEntityNames.Contains(ent.Item1))
+                .Where(ent => relatedEntityNames.Contains(ent.LogicalName))
                 .ToList();
 
             _suppressEntityChanged = true;
             otherCombo.Items.Clear();
             foreach (var entity in filteredEntities)
             {
-                otherCombo.Items.Add($"{entity.Item2} ({entity.Item1})");
+                otherCombo.Items.Add($"{entity.DisplayName} ({entity.LogicalName})");
             }
             otherCombo.Tag = filteredEntities;
             otherCombo.Enabled = true;
@@ -234,12 +234,12 @@ namespace SpeedyNtoNAssociatePlugin
 
         private void PopulateRelationships()
         {
-            var entities1 = cmbEntity1.Tag as List<Tuple<string, string>>;
-            var entities2 = cmbEntity2.Tag as List<Tuple<string, string>>;
+            var entities1 = cmbEntity1.Tag as List<EntityInfo>;
+            var entities2 = cmbEntity2.Tag as List<EntityInfo>;
             if (entities1 == null || entities2 == null) return;
 
-            var entity1 = entities1[cmbEntity1.SelectedIndex].Item1;
-            var entity2 = entities2[cmbEntity2.SelectedIndex].Item1;
+            var entity1 = entities1[cmbEntity1.SelectedIndex].LogicalName;
+            var entity2 = entities2[cmbEntity2.SelectedIndex].LogicalName;
 
             var matching = _allRelationships.Where(rel =>
                 (rel.Entity1LogicalName == entity1 && rel.Entity2LogicalName == entity2) ||
@@ -290,15 +290,7 @@ namespace SpeedyNtoNAssociatePlugin
                     _loadedPairs = _dataSourceService.LoadFromCsv(ofd.FileName);
                     _csvFilePath = ofd.FileName;
 
-                    dgvCsvPreview.Rows.Clear();
-                    var previewCount = Math.Min(_loadedPairs.Count, 100);
-                    for (int i = 0; i < previewCount; i++)
-                    {
-                        dgvCsvPreview.Rows.Add(_loadedPairs[i].Guid1.ToString(), _loadedPairs[i].Guid2.ToString());
-                    }
-
-                    lblCsvCount.Text = $"{_loadedPairs.Count:N0} pairs loaded (showing first {previewCount}).";
-                    AppendLog($"Loaded {_loadedPairs.Count:N0} pairs from CSV.");
+                    PopulatePreview(dgvCsvPreview, lblCsvCount, _loadedPairs, 0, "CSV");
                     UpdateStartButton();
                     PreFillProgress(_loadedPairs.Count);
                 }
@@ -371,43 +363,13 @@ namespace SpeedyNtoNAssociatePlugin
 
         private void ColorizeXml()
         {
-            var text = txtFetchXml.Text;
-            if (string.IsNullOrWhiteSpace(text)) return;
-
-            _suppressColorize = true;
-            var selStart = txtFetchXml.SelectionStart;
-            var selLength = txtFetchXml.SelectionLength;
-
-            txtFetchXml.SelectAll();
-            txtFetchXml.SelectionColor = XmlDefaultColor;
-
-            foreach (Match m in XmlPunctuationRegex.Matches(text))
+            ColorizeRichTextBox(txtFetchXml, XmlDefaultColor, new (Regex, Func<Match, int>, Func<Match, int>, Color)[]
             {
-                txtFetchXml.Select(m.Index, m.Length);
-                txtFetchXml.SelectionColor = XmlPunctuationColor;
-            }
-
-            foreach (Match m in XmlTagRegex.Matches(text))
-            {
-                txtFetchXml.Select(m.Index, m.Length);
-                txtFetchXml.SelectionColor = XmlTagColor;
-            }
-
-            foreach (Match m in XmlAttributeRegex.Matches(text))
-            {
-                txtFetchXml.Select(m.Groups[1].Index, m.Groups[1].Length);
-                txtFetchXml.SelectionColor = XmlAttributeColor;
-            }
-
-            foreach (Match m in XmlValueRegex.Matches(text))
-            {
-                txtFetchXml.Select(m.Index, m.Length);
-                txtFetchXml.SelectionColor = XmlValueColor;
-            }
-
-            txtFetchXml.Select(selStart, selLength);
-            txtFetchXml.SelectionColor = XmlDefaultColor;
-            _suppressColorize = false;
+                (XmlPunctuationRegex, m => m.Index, m => m.Length, XmlPunctuationColor),
+                (XmlTagRegex, m => m.Index, m => m.Length, XmlTagColor),
+                (XmlAttributeRegex, m => m.Groups[1].Index, m => m.Groups[1].Length, XmlAttributeColor),
+                (XmlValueRegex, m => m.Index, m => m.Length, XmlValueColor),
+            }, ref _suppressColorize);
         }
 
         private void btnPreviewFetchXml_Click(object sender, EventArgs e)
@@ -458,30 +420,11 @@ namespace SpeedyNtoNAssociatePlugin
                     _fetchXmlText = fetchXml;
                     var skipped = fetchResult.Item2;
 
-                    var countText = $"{_loadedPairs.Count:N0} pairs found (deduplicated).";
-                    if (skipped > 0)
-                        countText += $" {skipped:N0} rows skipped (GUIDs did not match selected entities).";
+                    PopulatePreview(dgvFetchPreview, lblFetchXmlCount, _loadedPairs, skipped, "FetchXML");
+                    splitFetch.Panel2Collapsed = _loadedPairs.Count == 0;
 
-                    lblFetchXmlCount.Text = countText;
-
-                    dgvFetchPreview.Rows.Clear();
-                    var previewCount = Math.Min(_loadedPairs.Count, 100);
-                    for (int i = 0; i < previewCount; i++)
-                    {
-                        dgvFetchPreview.Rows.Add(_loadedPairs[i].Guid1.ToString(), _loadedPairs[i].Guid2.ToString());
-                    }
-                    splitFetch.Panel2Collapsed = previewCount == 0;
-
-                    AppendLog($"FetchXML returned {_loadedPairs.Count:N0} pairs.");
                     if (skipped > 0)
                         AppendLog($"Skipped {skipped:N0} rows -- GUIDs did not match {entity1Name} or {entity2Name}.");
-
-                    if (_loadedPairs.Count > 1_000_000)
-                    {
-                        MessageBox.Show(
-                            $"Warning: {_loadedPairs.Count:N0} pairs generated. This may take a long time.",
-                            "Large Dataset", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    }
 
                     UpdateStartButton();
                     PreFillProgress(_loadedPairs.Count);
@@ -503,49 +446,14 @@ namespace SpeedyNtoNAssociatePlugin
 
         private void ColorizeSql()
         {
-            var text = txtSqlQuery.Text;
-            if (string.IsNullOrWhiteSpace(text)) return;
-
-            _suppressSqlColorize = true;
-            var selStart = txtSqlQuery.SelectionStart;
-            var selLength = txtSqlQuery.SelectionLength;
-
-            txtSqlQuery.SelectAll();
-            txtSqlQuery.SelectionColor = SqlDefaultColor;
-
-            foreach (Match m in SqlOperatorRegex.Matches(text))
+            ColorizeRichTextBox(txtSqlQuery, SqlDefaultColor, new (Regex, Func<Match, int>, Func<Match, int>, Color)[]
             {
-                txtSqlQuery.Select(m.Index, m.Length);
-                txtSqlQuery.SelectionColor = SqlOperatorColor;
-            }
-
-            foreach (Match m in SqlKeywordRegex.Matches(text))
-            {
-                txtSqlQuery.Select(m.Index, m.Length);
-                txtSqlQuery.SelectionColor = SqlKeywordColor;
-            }
-
-            foreach (Match m in SqlNumberRegex.Matches(text))
-            {
-                txtSqlQuery.Select(m.Index, m.Length);
-                txtSqlQuery.SelectionColor = SqlNumberColor;
-            }
-
-            foreach (Match m in SqlStringRegex.Matches(text))
-            {
-                txtSqlQuery.Select(m.Index, m.Length);
-                txtSqlQuery.SelectionColor = SqlStringColor;
-            }
-
-            foreach (Match m in SqlCommentRegex.Matches(text))
-            {
-                txtSqlQuery.Select(m.Index, m.Length);
-                txtSqlQuery.SelectionColor = SqlCommentColor;
-            }
-
-            txtSqlQuery.Select(selStart, selLength);
-            txtSqlQuery.SelectionColor = SqlDefaultColor;
-            _suppressSqlColorize = false;
+                (SqlOperatorRegex, m => m.Index, m => m.Length, SqlOperatorColor),
+                (SqlKeywordRegex, m => m.Index, m => m.Length, SqlKeywordColor),
+                (SqlNumberRegex, m => m.Index, m => m.Length, SqlNumberColor),
+                (SqlStringRegex, m => m.Index, m => m.Length, SqlStringColor),
+                (SqlCommentRegex, m => m.Index, m => m.Length, SqlCommentColor),
+            }, ref _suppressSqlColorize);
         }
 
         private void btnPreviewSql_Click(object sender, EventArgs e)
@@ -598,30 +506,8 @@ namespace SpeedyNtoNAssociatePlugin
                     if (!string.IsNullOrEmpty(diagnosticLog))
                         AppendLog($"SQL response: {diagnosticLog}");
 
-                    var countText = $"{_loadedPairs.Count:N0} pairs found (deduplicated).";
-                    if (skipped > 0)
-                        countText += $" {skipped:N0} rows skipped.";
-
-                    lblSqlCount.Text = countText;
-
-                    dgvSqlPreview.Rows.Clear();
-                    var previewCount = Math.Min(_loadedPairs.Count, 100);
-                    for (int i = 0; i < previewCount; i++)
-                    {
-                        dgvSqlPreview.Rows.Add(_loadedPairs[i].Guid1.ToString(), _loadedPairs[i].Guid2.ToString());
-                    }
-                    splitSql.Panel2Collapsed = previewCount == 0;
-
-                    AppendLog($"SQL returned {_loadedPairs.Count:N0} pairs.");
-                    if (skipped > 0)
-                        AppendLog($"Skipped {skipped:N0} rows.");
-
-                    if (_loadedPairs.Count > 1_000_000)
-                    {
-                        MessageBox.Show(
-                            $"Warning: {_loadedPairs.Count:N0} pairs generated. This may take a long time.",
-                            "Large Dataset", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    }
+                    PopulatePreview(dgvSqlPreview, lblSqlCount, _loadedPairs, skipped, "SQL");
+                    splitSql.Panel2Collapsed = _loadedPairs.Count == 0;
 
                     UpdateStartButton();
                     PreFillProgress(_loadedPairs.Count);
@@ -714,7 +600,7 @@ namespace SpeedyNtoNAssociatePlugin
             string entity1Name = relationship.Entity1LogicalName;
             string entity2Name = relationship.Entity2LogicalName;
 
-            bool isCsvTab = tabDataSource.SelectedIndex == 0;
+            bool isCsvTab = tabDataSource.SelectedTab == tabCsv;
             if (isCsvTab && !string.IsNullOrEmpty(_csvFilePath))
             {
                 pairsSource = _dataSourceService.StreamFromCsv(_csvFilePath);
@@ -850,6 +736,34 @@ namespace SpeedyNtoNAssociatePlugin
                                cmbRelationship.SelectedItem != null;
         }
 
+        private static void ColorizeRichTextBox(RichTextBox rtb, Color defaultColor,
+            (Regex regex, Func<Match, int> getIndex, Func<Match, int> getLength, Color color)[] rules,
+            ref bool suppressFlag)
+        {
+            var text = rtb.Text;
+            if (string.IsNullOrWhiteSpace(text)) return;
+
+            suppressFlag = true;
+            var selStart = rtb.SelectionStart;
+            var selLength = rtb.SelectionLength;
+
+            rtb.SelectAll();
+            rtb.SelectionColor = defaultColor;
+
+            foreach (var (regex, getIndex, getLength, color) in rules)
+            {
+                foreach (Match m in regex.Matches(text))
+                {
+                    rtb.Select(getIndex(m), getLength(m));
+                    rtb.SelectionColor = color;
+                }
+            }
+
+            rtb.Select(selStart, selLength);
+            rtb.SelectionColor = defaultColor;
+            suppressFlag = false;
+        }
+
         private static void StripIncomingFormatting(RichTextBox rtb, ref bool suppressFlag)
         {
             var plain = rtb.Text;
@@ -864,6 +778,31 @@ namespace SpeedyNtoNAssociatePlugin
             rtb.SelectionStart = Math.Min(pos, plain.Length);
             rtb.SelectionLength = 0;
             suppressFlag = false;
+        }
+
+        private void PopulatePreview(DataGridView dgv, System.Windows.Forms.Label countLabel,
+            List<AssociationPair> pairs, int skipped, string sourceName)
+        {
+            dgv.Rows.Clear();
+            var previewCount = Math.Min(pairs.Count, 100);
+            for (int i = 0; i < previewCount; i++)
+            {
+                dgv.Rows.Add(pairs[i].Guid1.ToString(), pairs[i].Guid2.ToString());
+            }
+
+            var countText = $"{pairs.Count:N0} pairs found (deduplicated).";
+            if (skipped > 0)
+                countText += $" {skipped:N0} rows skipped.";
+            countLabel.Text = countText;
+
+            AppendLog($"{sourceName} returned {pairs.Count:N0} pairs.");
+
+            if (pairs.Count > 1_000_000)
+            {
+                MessageBox.Show(
+                    $"Warning: {pairs.Count:N0} pairs generated. This may take a long time.",
+                    "Large Dataset", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
         private void PreFillProgress(int pairCount)

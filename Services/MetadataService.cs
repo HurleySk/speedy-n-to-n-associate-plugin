@@ -2,16 +2,20 @@ using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Messages;
 using Microsoft.Xrm.Sdk.Metadata;
 using SpeedyNtoNAssociatePlugin.Models;
-using System;
 using System.Collections.Generic;
 using System.Linq;
 
 namespace SpeedyNtoNAssociatePlugin.Services
 {
+    public class MetadataResult
+    {
+        public List<EntityInfo> Entities { get; set; }
+        public List<RelationshipInfo> Relationships { get; set; }
+    }
+
     public class MetadataService
     {
-        public Tuple<List<Tuple<string, string>>, List<RelationshipInfo>> GetAllMetadata(
-            IOrganizationService service)
+        public MetadataResult GetAllMetadata(IOrganizationService service)
         {
             var request = new RetrieveAllEntitiesRequest
             {
@@ -24,10 +28,12 @@ namespace SpeedyNtoNAssociatePlugin.Services
             // Extract entities
             var entities = response.EntityMetadata
                 .Where(e => e.IsIntersect != true)
-                .Select(e => Tuple.Create(
-                    e.LogicalName,
-                    e.DisplayName?.UserLocalizedLabel?.Label ?? e.LogicalName))
-                .OrderBy(e => e.Item2)
+                .Select(e => new EntityInfo
+                {
+                    LogicalName = e.LogicalName,
+                    DisplayName = e.DisplayName?.UserLocalizedLabel?.Label ?? e.LogicalName
+                })
+                .OrderBy(e => e.DisplayName)
                 .ToList();
 
             // Extract N:N relationships (deduplicated)
@@ -55,7 +61,7 @@ namespace SpeedyNtoNAssociatePlugin.Services
                 }
             }
 
-            return Tuple.Create(entities, relationships);
+            return new MetadataResult { Entities = entities, Relationships = relationships };
         }
     }
 }
