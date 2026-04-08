@@ -5,6 +5,7 @@ using SpeedyNtoNAssociatePlugin.Models;
 using SpeedyNtoNAssociatePlugin.Services;
 using SpeedyNtoNAssociatePlugin.Tests.Mocks;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -55,6 +56,14 @@ namespace SpeedyNtoNAssociatePlugin.Tests
             TestAssociationEngineCancellation();
             TestGetRecommendedParallelism();
             TestAssociationEngineResume();
+
+            // Performance feature tests
+            TestFireAndForgetBatchMode();
+            TestDirectInsertMode();
+            TestBatchModeResponseMap();
+
+            // Test data generator
+            TestGenerateCsvRoundTrip();
 
             Console.WriteLine($"\n=== Results: {_passed} passed, {_failed} failed ===");
             Environment.Exit(_failed > 0 ? 1 : 0);
@@ -758,6 +767,252 @@ namespace SpeedyNtoNAssociatePlugin.Tests
             var result = engine.GetRecommendedParallelism(mock);
 
             Assert(result == 4, $"Non-CrmServiceClient returns default 4 (got {result})");
+        }
+
+        #endregion
+
+        #region Performance Feature Tests
+
+        static void TestFireAndForgetBatchMode()
+        {
+            Console.WriteLine("\nTest: Fire-and-Forget Batch Mode");
+
+            var dbPath = Path.Combine(Path.GetTempPath(), "SpeedyNtoN_ff_" + Guid.NewGuid().ToString("N") + ".db");
+            try
+            {
+                var mock = new MockOrganizationService();
+                mock.ExecuteHandler = req =>
+                {
+                    // ExecuteMultipleRequest in fire-and-forget returns empty responses
+                    if (req is ExecuteMultipleRequest emr)
+                    {
+                        Assert(!emr.Settings.ReturnResponses,
+                            "Fire-and-forget: ReturnResponses is false");
+                        Assert(!emr.Settings.ContinueOnError,
+                            "Fire-and-forget: ContinueOnError is false");
+                        return new ExecuteMultipleResponse
+                        {
+                            Results = { ["Responses"] = new ExecuteMultipleResponseItemCollection() }
+                        };
+                    }
+                    return new OrganizationResponse();
+                };
+
+                var pairs = new List<AssociationPair>();
+                for (int i = 0; i < 5; i++)
+                    pairs.Add(new AssociationPair { Guid1 = Guid.NewGuid(), Guid2 = Guid.NewGuid() });
+
+                var relationship = new RelationshipInfo
+                {
+                    SchemaName = "test_nn",
+                    Entity1LogicalName = "account",
+                    Entity2LogicalName = "contact",
+                    IntersectEntityName = "test_account_contact",
+                    Entity1IntersectAttribute = "accountid",
+                    Entity2IntersectAttribute = "contactid"
+                };
+
+                var tracker = new ResumeTracker(dbPath);
+                tracker.Open();
+
+                var engine = new AssociationEngine();
+                engine.RunAsync(mock, pairs, relationship,
+                    degreeOfParallelism: 1, tracker, bypassPlugins: false,
+                    verboseLogging: false, maxRetries: 0, batchSize: 5,
+                    fireAndForget: true, useDirectInsert: false,
+                    CancellationToken.None).GetAwaiter().GetResult();
+
+                tracker.FlushBatch();
+
+                Assert(tracker.GetCompletedCount() == 5,
+                    "Fire-and-forget: all 5 pairs marked completed");
+
+                tracker.Dispose();
+            }
+            finally { CleanupDb(dbPath); }
+        }
+
+        static void TestDirectInsertMode()
+        {
+            Console.WriteLine("\nTest: Direct Intersect Insert Mode");
+
+            var dbPath = Path.Combine(Path.GetTempPath(), "SpeedyNtoN_di_" + Guid.NewGuid().ToString("N") + ".db");
+            try
+            {
+                var mock = new MockOrganizationService();
+                var createRequests = new ConcurrentBag<CreateRequest>();
+                mock.ExecuteHandler = req =>
+                {
+                    if (req is CreateRequest cr)
+                    {
+                        createRequests.Add(cr);
+                        return new CreateResponse { Results = { ["id"] = Guid.NewGuid() } };
+                    }
+                    return new OrganizationResponse();
+                };
+
+                var pair = new AssociationPair { Guid1 = Guid.NewGuid(), Guid2 = Guid.NewGuid() };
+
+                var relationship = new RelationshipInfo
+                {
+                    SchemaName = "test_nn",
+                    Entity1LogicalName = "account",
+                    Entity2LogicalName = "contact",
+                    IntersectEntityName = "test_account_contact",
+                    Entity1IntersectAttribute = "accountid",
+                    Entity2IntersectAttribute = "contactid"
+                };
+
+                var tracker = new ResumeTracker(dbPath);
+                tracker.Open();
+
+                var engine = new AssociationEngine();
+                engine.RunAsync(mock, new[] { pair }, relationship,
+                    degreeOfParallelism: 1, tracker, bypassPlugins: true,
+                    verboseLogging: false, maxRetries: 0, batchSize: 1,
+                    fireAndForget: false, useDirectInsert: true,
+                    CancellationToken.None).GetAwaiter().GetResult();
+
+                tracker.FlushBatch();
+
+                Assert(createRequests.Count == 1,
+                    "Direct insert: CreateRequest sent (not AssociateRequest)");
+
+                var captured = createRequests.First();
+                Assert(captured.Target.LogicalName == "test_account_contact",
+                    "Direct insert: targets intersect entity");
+                Assert((Guid)captured.Target["accountid"] == pair.Guid1,
+                    "Direct insert: Entity1IntersectAttribute set to Guid1");
+                Assert((Guid)captured.Target["contactid"] == pair.Guid2,
+                    "Direct insert: Entity2IntersectAttribute set to Guid2");
+                Assert(mock.ExecutedRequests.ToArray().All(r => r is CreateRequest),
+                    "Direct insert: no AssociateRequests sent");
+
+                tracker.Dispose();
+            }
+            finally { CleanupDb(dbPath); }
+        }
+
+        static void TestBatchModeResponseMap()
+        {
+            Console.WriteLine("\nTest: Batch Mode Response Map (O(1) lookup)");
+
+            var dbPath = Path.Combine(Path.GetTempPath(), "SpeedyNtoN_batch_" + Guid.NewGuid().ToString("N") + ".db");
+            try
+            {
+                var mock = new MockOrganizationService();
+                mock.ExecuteHandler = req =>
+                {
+                    if (req is ExecuteMultipleRequest emr)
+                    {
+                        // Return responses with one success and one duplicate
+                        var responses = new ExecuteMultipleResponseItemCollection();
+                        // Index 1 is a duplicate fault
+                        responses.Add(new ExecuteMultipleResponseItem
+                        {
+                            RequestIndex = 1,
+                            Fault = new OrganizationServiceFault
+                            {
+                                Message = "Cannot insert duplicate key row in object"
+                            }
+                        });
+                        return new ExecuteMultipleResponse
+                        {
+                            Results = { ["Responses"] = responses }
+                        };
+                    }
+                    return new OrganizationResponse();
+                };
+
+                var pairs = new List<AssociationPair>
+                {
+                    new AssociationPair { Guid1 = Guid.NewGuid(), Guid2 = Guid.NewGuid() },
+                    new AssociationPair { Guid1 = Guid.NewGuid(), Guid2 = Guid.NewGuid() },
+                };
+
+                var relationship = new RelationshipInfo
+                {
+                    SchemaName = "test_nn",
+                    Entity1LogicalName = "account",
+                    Entity2LogicalName = "contact",
+                    IntersectEntityName = "test_account_contact",
+                    Entity1IntersectAttribute = "accountid",
+                    Entity2IntersectAttribute = "contactid"
+                };
+
+                var tracker = new ResumeTracker(dbPath);
+                tracker.Open();
+
+                var engine = new AssociationEngine();
+                int lastDuplicates = 0;
+                engine.ProgressUpdated += (completed, duplicates, errors, total) =>
+                {
+                    lastDuplicates = duplicates;
+                };
+
+                engine.RunAsync(mock, pairs, relationship,
+                    degreeOfParallelism: 1, tracker, bypassPlugins: false,
+                    verboseLogging: false, maxRetries: 0, batchSize: 2,
+                    fireAndForget: false, useDirectInsert: false,
+                    CancellationToken.None).GetAwaiter().GetResult();
+
+                tracker.FlushBatch();
+
+                Assert(tracker.GetCompletedCount() == 2,
+                    "Batch mode: both pairs tracked as completed");
+                Assert(lastDuplicates == 1,
+                    "Batch mode: 1 duplicate detected via response map");
+
+                tracker.Dispose();
+            }
+            finally { CleanupDb(dbPath); }
+        }
+
+        #endregion
+
+        #region Test Data Generator
+
+        static void TestGenerateCsvRoundTrip()
+        {
+            Console.WriteLine("\nTest: CSV Generator Round-Trip");
+
+            var csvPath = Path.GetTempFileName();
+            try
+            {
+                int count = 500;
+                GenerateTestCsv(csvPath, count);
+
+                var svc = new DataSourceService();
+                var pairs = svc.StreamFromCsv(csvPath).ToList();
+
+                Assert(pairs.Count == count,
+                    $"Generated CSV has {count} loadable pairs");
+                Assert(pairs.All(p => p.Guid1 != Guid.Empty && p.Guid2 != Guid.Empty),
+                    "All pairs have non-empty GUIDs");
+                Assert(pairs.Select(p => p.NormalizedKey()).Distinct().Count() == count,
+                    "All pairs are unique");
+
+                // Verify file size is reasonable
+                var fileInfo = new FileInfo(csvPath);
+                Assert(fileInfo.Length > 0, $"CSV file is non-empty ({fileInfo.Length} bytes)");
+            }
+            finally { File.Delete(csvPath); }
+        }
+
+        /// <summary>
+        /// Generates a CSV file with random GUID pairs for testing.
+        /// Can be called from tests or used as a standalone utility.
+        /// </summary>
+        static void GenerateTestCsv(string outputPath, int count, bool includeHeader = true)
+        {
+            using (var writer = new StreamWriter(outputPath))
+            {
+                if (includeHeader)
+                    writer.WriteLine("Guid1,Guid2");
+
+                for (int i = 0; i < count; i++)
+                    writer.WriteLine($"{Guid.NewGuid()},{Guid.NewGuid()}");
+            }
         }
 
         #endregion
