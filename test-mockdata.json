@@ -1,0 +1,393 @@
+﻿{
+    "settings":  {
+                     "throwIfUnmatched":  false,
+                     "defaultDelay":  0
+                 },
+    "responses":  [
+                      {
+                          "match":  {
+                                        "requestType":  "Microsoft.Crm.Sdk.Messages.WhoAmIRequest"
+                                    },
+                          "operation":  "Execute",
+                          "description":  "WhoAmI response",
+                          "response":  {
+                                           "responseType":  "Microsoft.Crm.Sdk.Messages.WhoAmIResponse",
+                                           "results":  {
+                                                           "OrganizationId":  "d192ba70-361d-4a4e-bd83-84bbff496917",
+                                                           "UserId":  "93363f67-e130-4258-a7e6-6673e34a2b92",
+                                                           "BusinessUnitId":  "54aab70d-a46a-4e66-8376-af54db365c9c"
+                                                       }
+                                       }
+                      },
+                      {
+                          "match":  {
+                                        "requestType":  "Microsoft.Xrm.Sdk.Messages.ExecuteMultipleRequest"
+                                    },
+                          "operation":  "Execute",
+                          "description":  "Mock ExecuteMultipleRequest",
+                          "response":  {
+                                           "responseType":  "Microsoft.Xrm.Sdk.Messages.ExecuteMultipleResponse",
+                                           "results":  {
+
+                                                       }
+                                       }
+                      },
+                      {
+                          "match":  {
+                                        "requestType":  "Microsoft.Xrm.Sdk.Messages.RetrieveAllEntitiesRequest"
+                                    },
+                          "operation":  "Execute",
+                          "description":  "Mock RetrieveAllEntitiesRequest - returns metadata for discovered entities",
+                          "response":  {
+                                           "entityMetadata":  [
+                                                                  {
+                                                                      "logicalName":  "account",
+                                                                      "schemaName":  "Account",
+                                                                      "displayName":  "Account",
+                                                                      "displayCollectionName":  "Accounts",
+                                                                      "entitySetName":  "accounts",
+                                                                      "primaryIdAttribute":  "accountid",
+                                                                      "primaryNameAttribute":  "name",
+                                                                      "objectTypeCode":  10000,
+                                                                      "isCustomEntity":  false,
+                                                                      "isIntersect":  false,
+                                                                      "manyToManyRelationships":  [
+                                                                                                      {
+                                                                                                          "schemaName": "account_contact_nn",
+                                                                                                          "entity1LogicalName": "account",
+                                                                                                          "entity2LogicalName": "contact",
+                                                                                                          "intersectEntityName": "account_contact_nn",
+                                                                                                          "entity1IntersectAttribute": "accountid",
+                                                                                                          "entity2IntersectAttribute": "contactid"
+                                                                                                      }
+                                                                                                  ]
+                                                                  },
+                                                                  {
+                                                                      "logicalName":  "contact",
+                                                                      "schemaName":  "Contact",
+                                                                      "displayName":  "Contact",
+                                                                      "displayCollectionName":  "Contacts",
+                                                                      "entitySetName":  "contacts",
+                                                                      "primaryIdAttribute":  "contactid",
+                                                                      "primaryNameAttribute":  "name",
+                                                                      "objectTypeCode":  10001,
+                                                                      "isCustomEntity":  false,
+                                                                      "isIntersect":  false,
+                                                                      "manyToManyRelationships":  [
+                                                                                                      {
+                                                                                                          "schemaName": "account_contact_nn",
+                                                                                                          "entity1LogicalName": "account",
+                                                                                                          "entity2LogicalName": "contact",
+                                                                                                          "intersectEntityName": "account_contact_nn",
+                                                                                                          "entity1IntersectAttribute": "accountid",
+                                                                                                          "entity2IntersectAttribute": "contactid"
+                                                                                                      }
+                                                                                                  ]
+                                                                  },
+                                                                  {
+                                                                      "logicalName":  "opportunity",
+                                                                      "schemaName":  "Opportunity",
+                                                                      "displayName":  "Opportunity",
+                                                                      "displayCollectionName":  "Opportunitys",
+                                                                      "entitySetName":  "opportunitys",
+                                                                      "primaryIdAttribute":  "opportunityid",
+                                                                      "primaryNameAttribute":  "name",
+                                                                      "objectTypeCode":  10002,
+                                                                      "isCustomEntity":  false,
+                                                                      "isIntersect":  false,
+                                                                      "manyToManyRelationships":  [
+
+                                                                                                  ]
+                                                                  },
+                                                                  {
+                                                                      "logicalName":  "systemuser",
+                                                                      "schemaName":  "Systemuser",
+                                                                      "displayName":  "Systemuser",
+                                                                      "displayCollectionName":  "Systemusers",
+                                                                      "entitySetName":  "systemusers",
+                                                                      "primaryIdAttribute":  "systemuserid",
+                                                                      "primaryNameAttribute":  "name",
+                                                                      "objectTypeCode":  10003,
+                                                                      "isCustomEntity":  false,
+                                                                      "isIntersect":  false,
+                                                                      "manyToManyRelationships":  [
+
+                                                                                                  ]
+                                                                  },
+                                                                  {
+                                                                      "logicalName":  "account_contact_nn",
+                                                                      "schemaName":  "AccountContactNn",
+                                                                      "displayName":  "Account Contact Nn",
+                                                                      "displayCollectionName":  "Account Contact Nns",
+                                                                      "entitySetName":  "account_contact_nns",
+                                                                      "primaryIdAttribute":  "account_contact_nnid",
+                                                                      "primaryNameAttribute":  "name",
+                                                                      "objectTypeCode":  10004,
+                                                                      "isCustomEntity":  true,
+                                                                      "isIntersect":  true,
+                                                                      "manyToManyRelationships":  [
+
+                                                                                                  ]
+                                                                  },
+                                                                  {
+                                                                      "logicalName":  "test_account_contact",
+                                                                      "schemaName":  "TestAccountContact",
+                                                                      "displayName":  "Test Account Contact",
+                                                                      "displayCollectionName":  "Test Account Contacts",
+                                                                      "entitySetName":  "test_account_contacts",
+                                                                      "primaryIdAttribute":  "test_account_contactid",
+                                                                      "primaryNameAttribute":  "name",
+                                                                      "objectTypeCode":  10005,
+                                                                      "isCustomEntity":  true,
+                                                                      "isIntersect":  false,
+                                                                      "manyToManyRelationships":  [
+
+                                                                                                  ]
+                                                                  },
+                                                                  {
+                                                                      "logicalName":  "test_nn",
+                                                                      "schemaName":  "TestNn",
+                                                                      "displayName":  "Test Nn",
+                                                                      "displayCollectionName":  "Test Nns",
+                                                                      "entitySetName":  "test_nns",
+                                                                      "primaryIdAttribute":  "test_nnid",
+                                                                      "primaryNameAttribute":  "name",
+                                                                      "objectTypeCode":  10006,
+                                                                      "isCustomEntity":  true,
+                                                                      "isIntersect":  false,
+                                                                      "manyToManyRelationships":  [
+
+                                                                                                  ]
+                                                                  }
+                                                              ],
+                                           "responseType":  "Microsoft.Xrm.Sdk.Messages.RetrieveAllEntitiesResponse",
+                                           "results":  {
+
+                                                       }
+                                       }
+                      },
+                      {
+                          "match":  {
+                                        "requestType":  "ExecutePowerBISql"
+                                    },
+                          "operation":  "Execute",
+                          "description":  "Mock custom action: ExecutePowerBISql",
+                          "response":  {
+                                           "results":  {
+
+                                                       }
+                                       }
+                      },
+                      {
+                          "match":  {
+                                        "entityName":  "account"
+                                    },
+                          "operation":  "RetrieveMultiple",
+                          "description":  "Mock account data",
+                          "response":  {
+                                           "moreRecords":  false,
+                                           "totalRecordCount":  -1,
+                                           "entities":  [
+                                                            {
+                                                                "attributes":  {
+                                                                                   "accountid":  "c5082270-7a32-476c-aaef-fbbca699c247",
+                                                                                   "name":  "Test Account"
+                                                                               },
+                                                                "logicalName":  "account",
+                                                                "id":  "c5082270-7a32-476c-aaef-fbbca699c247"
+                                                            }
+                                                        ]
+                                       }
+                      },
+                      {
+                          "match":  {
+                                        "entityName":  "contact"
+                                    },
+                          "operation":  "RetrieveMultiple",
+                          "description":  "Mock contact data",
+                          "response":  {
+                                           "moreRecords":  false,
+                                           "totalRecordCount":  -1,
+                                           "entities":  [
+                                                            {
+                                                                "attributes":  {
+                                                                                   "contactid":  "41c902c9-4137-4f2a-baf3-32279b7ed0d2",
+                                                                                   "name":  "Test Contact"
+                                                                               },
+                                                                "logicalName":  "contact",
+                                                                "id":  "41c902c9-4137-4f2a-baf3-32279b7ed0d2"
+                                                            }
+                                                        ]
+                                       }
+                      },
+                      {
+                          "match":  {
+                                        "entityName":  "opportunity"
+                                    },
+                          "operation":  "RetrieveMultiple",
+                          "description":  "Mock opportunity data",
+                          "response":  {
+                                           "moreRecords":  false,
+                                           "totalRecordCount":  -1,
+                                           "entities":  [
+                                                            {
+                                                                "attributes":  {
+                                                                                   "opportunityid":  "ae5a1292-5953-4e11-b633-8a6008f3e943",
+                                                                                   "name":  "Test Opportunity"
+                                                                               },
+                                                                "logicalName":  "opportunity",
+                                                                "id":  "ae5a1292-5953-4e11-b633-8a6008f3e943"
+                                                            }
+                                                        ]
+                                       }
+                      },
+                      {
+                          "match":  {
+                                        "entityName":  "systemuser"
+                                    },
+                          "operation":  "RetrieveMultiple",
+                          "description":  "Mock systemuser data",
+                          "response":  {
+                                           "moreRecords":  false,
+                                           "totalRecordCount":  -1,
+                                           "entities":  [
+                                                            {
+                                                                "attributes":  {
+                                                                                   "systemuserid":  "2cd30751-1ec5-4f72-a297-1453de203248",
+                                                                                   "name":  "Test Systemuser"
+                                                                               },
+                                                                "logicalName":  "systemuser",
+                                                                "id":  "2cd30751-1ec5-4f72-a297-1453de203248"
+                                                            }
+                                                        ]
+                                       }
+                      },
+                      {
+                          "match":  {
+                                        "entityName":  "account_contact_nn"
+                                    },
+                          "operation":  "RetrieveMultiple",
+                          "description":  "Mock account_contact_nn data",
+                          "response":  {
+                                           "moreRecords":  false,
+                                           "totalRecordCount":  -1,
+                                           "entities":  [
+                                                            {
+                                                                "attributes":  {
+                                                                                   "account_contact_nnid":  "0b9f36a5-6623-41de-8109-2099d753853b",
+                                                                                   "name":  "Test Account Contact Nn"
+                                                                               },
+                                                                "logicalName":  "account_contact_nn",
+                                                                "id":  "0b9f36a5-6623-41de-8109-2099d753853b"
+                                                            }
+                                                        ]
+                                       }
+                      },
+                      {
+                          "match":  {
+                                        "entityName":  "test_account_contact"
+                                    },
+                          "operation":  "RetrieveMultiple",
+                          "description":  "Mock test_account_contact data",
+                          "response":  {
+                                           "moreRecords":  false,
+                                           "totalRecordCount":  -1,
+                                           "entities":  [
+                                                            {
+                                                                "attributes":  {
+                                                                                   "test_account_contactid":  "05266343-a00a-43e5-8d05-79e3e828ce3f",
+                                                                                   "name":  "Test Test Account Contact"
+                                                                               },
+                                                                "logicalName":  "test_account_contact",
+                                                                "id":  "05266343-a00a-43e5-8d05-79e3e828ce3f"
+                                                            }
+                                                        ]
+                                       }
+                      },
+                      {
+                          "match":  {
+                                        "entityName":  "test_nn"
+                                    },
+                          "operation":  "RetrieveMultiple",
+                          "description":  "Mock test_nn data",
+                          "response":  {
+                                           "moreRecords":  false,
+                                           "totalRecordCount":  -1,
+                                           "entities":  [
+                                                            {
+                                                                "attributes":  {
+                                                                                   "test_nnid":  "fa65f8fc-35b1-4c31-b4ba-e8ee33ed7fa1",
+                                                                                   "name":  "Test Test Nn"
+                                                                               },
+                                                                "logicalName":  "test_nn",
+                                                                "id":  "fa65f8fc-35b1-4c31-b4ba-e8ee33ed7fa1"
+                                                            }
+                                                        ]
+                                       }
+                      },
+                      {
+                          "match":  {
+                                        "*":  "*"
+                                    },
+                          "operation":  "RetrieveMultiple",
+                          "description":  "Catch-all: return empty result set for unmatched queries",
+                          "response":  {
+                                           "moreRecords":  false,
+                                           "totalRecordCount":  -1,
+                                           "entities":  [
+
+                                                        ]
+                                       }
+                      },
+                      {
+                          "match":  {
+                                        "*":  "*"
+                                    },
+                          "operation":  "Create",
+                          "description":  "Catch-all: return a new GUID for any Create",
+                          "response":  {
+                                           "id":  "0b884b25-d4da-42e3-a7c9-7489c1057350"
+                                       }
+                      },
+                      {
+                          "match":  {
+                                        "*":  "*"
+                                    },
+                          "operation":  "Update",
+                          "description":  "Catch-all: no-op for any Update",
+                          "response":  {
+
+                                       }
+                      },
+                      {
+                          "match":  {
+                                        "*":  "*"
+                                    },
+                          "operation":  "Delete",
+                          "description":  "Catch-all: no-op for any Delete",
+                          "response":  {
+
+                                       }
+                      },
+                      {
+                          "match":  {
+                                        "*":  "*"
+                                    },
+                          "operation":  "Associate",
+                          "description":  "Catch-all: no-op for any Associate",
+                          "response":  {
+
+                                       }
+                      },
+                      {
+                          "match":  {
+                                        "*":  "*"
+                                    },
+                          "operation":  "Disassociate",
+                          "description":  "Catch-all: no-op for any Disassociate",
+                          "response":  {
+
+                                       }
+                      }
+                  ]
+}

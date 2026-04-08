@@ -1,0 +1,358 @@
+﻿{
+    "pluginSourceDir":  "C:\\Users\\shurley\\source\\repos\\HurleySk\\speedy-n-to-n-associate-plugin",
+    "generatedAt":  "2026-04-08 12:40:11",
+    "controls":  [
+                     {
+                         "name":  "lblStatus",
+                         "type":  "Label",
+                         "category":  "feedback",
+                         "prefix":  "lbl"
+                     },
+                     {
+                         "name":  "grpRelationship",
+                         "type":  "GroupBox",
+                         "category":  "layout",
+                         "prefix":  "grp"
+                     },
+                     {
+                         "name":  "cmbRelationship",
+                         "type":  "ComboBox",
+                         "category":  "input-dropdown",
+                         "prefix":  "cmb"
+                     },
+                     {
+                         "name":  "lblRelationship",
+                         "type":  "Label",
+                         "category":  "feedback",
+                         "prefix":  "lbl"
+                     },
+                     {
+                         "name":  "cmbEntity2",
+                         "type":  "ComboBox",
+                         "category":  "input-dropdown",
+                         "prefix":  "cmb"
+                     },
+                     {
+                         "name":  "lblEntity2",
+                         "type":  "Label",
+                         "category":  "feedback",
+                         "prefix":  "lbl"
+                     },
+                     {
+                         "name":  "cmbEntity1",
+                         "type":  "ComboBox",
+                         "category":  "input-dropdown",
+                         "prefix":  "cmb"
+                     },
+                     {
+                         "name":  "lblEntity1",
+                         "type":  "Label",
+                         "category":  "feedback",
+                         "prefix":  "lbl"
+                     },
+                     {
+                         "name":  "btnLoadEntities",
+                         "type":  "Button",
+                         "category":  "action",
+                         "prefix":  "btn"
+                     },
+                     {
+                         "name":  "tabDataSource",
+                         "type":  "TabControl",
+                         "category":  "navigation",
+                         "prefix":  "tab"
+                     },
+                     {
+                         "name":  "tabCsv",
+                         "type":  "TabPage",
+                         "category":  "navigation",
+                         "prefix":  "tab"
+                     },
+                     {
+                         "name":  "lblCsvCount",
+                         "type":  "Label",
+                         "category":  "feedback",
+                         "prefix":  "lbl"
+                     },
+                     {
+                         "name":  "dgvCsvPreview",
+                         "type":  "DataGridView",
+                         "category":  "data-display",
+                         "prefix":  "dgv"
+                     },
+                     {
+                         "name":  "colGuid1",
+                         "type":  "DataGridViewTextBoxColumn",
+                         "category":  "column",
+                         "prefix":  "col"
+                     },
+                     {
+                         "name":  "colGuid2",
+                         "type":  "DataGridViewTextBoxColumn",
+                         "category":  "column",
+                         "prefix":  "col"
+                     },
+                     {
+                         "name":  "btnBrowseCsv",
+                         "type":  "Button",
+                         "category":  "action",
+                         "prefix":  "btn"
+                     },
+                     {
+                         "name":  "txtCsvPath",
+                         "type":  "TextBox",
+                         "category":  "input-text",
+                         "prefix":  "txt"
+                     },
+                     {
+                         "name":  "tabFetchXml",
+                         "type":  "TabPage",
+                         "category":  "navigation",
+                         "prefix":  "tab"
+                     },
+                     {
+                         "name":  "lblFetchInstructions",
+                         "type":  "Label",
+                         "category":  "feedback",
+                         "prefix":  "lbl"
+                     },
+                     {
+                         "name":  "splitFetch",
+                         "type":  "SplitContainer",
+                         "category":  "layout",
+                         "prefix":  "split"
+                     },
+                     {
+                         "name":  "txtFetchXml",
+                         "type":  "RichTextBox",
+                         "category":  "input-text",
+                         "prefix":  "txt"
+                     },
+                     {
+                         "name":  "dgvFetchPreview",
+                         "type":  "DataGridView",
+                         "category":  "data-display",
+                         "prefix":  "dgv"
+                     },
+                     {
+                         "name":  "colFetchGuid1",
+                         "type":  "DataGridViewTextBoxColumn",
+                         "category":  "column",
+                         "prefix":  "col"
+                     },
+                     {
+                         "name":  "colFetchGuid2",
+                         "type":  "DataGridViewTextBoxColumn",
+                         "category":  "column",
+                         "prefix":  "col"
+                     },
+                     {
+                         "name":  "lblFetchXmlCount",
+                         "type":  "Label",
+                         "category":  "feedback",
+                         "prefix":  "lbl"
+                     },
+                     {
+                         "name":  "btnPreviewFetchXml",
+                         "type":  "Button",
+                         "category":  "action",
+                         "prefix":  "btn"
+                     },
+                     {
+                         "name":  "tabSql",
+                         "type":  "TabPage",
+                         "category":  "navigation",
+                         "prefix":  "tab"
+                     },
+                     {
+                         "name":  "lblSqlInstructions",
+                         "type":  "Label",
+                         "category":  "feedback",
+                         "prefix":  "lbl"
+                     },
+                     {
+                         "name":  "splitSql",
+                         "type":  "SplitContainer",
+                         "category":  "layout",
+                         "prefix":  "split"
+                     },
+                     {
+                         "name":  "txtSqlQuery",
+                         "type":  "RichTextBox",
+                         "category":  "input-text",
+                         "prefix":  "txt"
+                     },
+                     {
+                         "name":  "dgvSqlPreview",
+                         "type":  "DataGridView",
+                         "category":  "data-display",
+                         "prefix":  "dgv"
+                     },
+                     {
+                         "name":  "colSqlGuid1",
+                         "type":  "DataGridViewTextBoxColumn",
+                         "category":  "column",
+                         "prefix":  "col"
+                     },
+                     {
+                         "name":  "colSqlGuid2",
+                         "type":  "DataGridViewTextBoxColumn",
+                         "category":  "column",
+                         "prefix":  "col"
+                     },
+                     {
+                         "name":  "btnPreviewSql",
+                         "type":  "Button",
+                         "category":  "action",
+                         "prefix":  "btn"
+                     },
+                     {
+                         "name":  "lblSqlCount",
+                         "type":  "Label",
+                         "category":  "feedback",
+                         "prefix":  "lbl"
+                     },
+                     {
+                         "name":  "grpSettings",
+                         "type":  "GroupBox",
+                         "category":  "layout",
+                         "prefix":  "grp"
+                     },
+                     {
+                         "name":  "chkBypassPlugins",
+                         "type":  "CheckBox",
+                         "category":  "input-toggle",
+                         "prefix":  "chk"
+                     },
+                     {
+                         "name":  "chkVerboseLog",
+                         "type":  "CheckBox",
+                         "category":  "input-toggle",
+                         "prefix":  "chk"
+                     },
+                     {
+                         "name":  "nudRetries",
+                         "type":  "NumericUpDown",
+                         "category":  "input-numeric",
+                         "prefix":  "nud"
+                     },
+                     {
+                         "name":  "lblRetries",
+                         "type":  "Label",
+                         "category":  "feedback",
+                         "prefix":  "lbl"
+                     },
+                     {
+                         "name":  "nudParallelism",
+                         "type":  "NumericUpDown",
+                         "category":  "input-numeric",
+                         "prefix":  "nud"
+                     },
+                     {
+                         "name":  "lblParallelism",
+                         "type":  "Label",
+                         "category":  "feedback",
+                         "prefix":  "lbl"
+                     },
+                     {
+                         "name":  "grpProgress",
+                         "type":  "GroupBox",
+                         "category":  "layout",
+                         "prefix":  "grp"
+                     },
+                     {
+                         "name":  "lblErrors",
+                         "type":  "Label",
+                         "category":  "feedback",
+                         "prefix":  "lbl"
+                     },
+                     {
+                         "name":  "lblDuplicates",
+                         "type":  "Label",
+                         "category":  "feedback",
+                         "prefix":  "lbl"
+                     },
+                     {
+                         "name":  "lblProgress",
+                         "type":  "Label",
+                         "category":  "feedback",
+                         "prefix":  "lbl"
+                     },
+                     {
+                         "name":  "progressBar",
+                         "type":  "ProgressBar",
+                         "category":  "feedback",
+                         "prefix":  "progress"
+                     },
+                     {
+                         "name":  "btnStart",
+                         "type":  "Button",
+                         "category":  "action",
+                         "prefix":  "btn"
+                     },
+                     {
+                         "name":  "btnStop",
+                         "type":  "Button",
+                         "category":  "action",
+                         "prefix":  "btn"
+                     },
+                     {
+                         "name":  "txtLog",
+                         "type":  "TextBox",
+                         "category":  "input-text",
+                         "prefix":  "txt"
+                     },
+                     {
+                         "name":  "btnFormatXml",
+                         "type":  "Button",
+                         "category":  "action",
+                         "prefix":  "btn"
+                     },
+                     {
+                         "name":  "nudBatchSize",
+                         "type":  "NumericUpDown",
+                         "category":  "input-numeric",
+                         "prefix":  "nud"
+                     },
+                     {
+                         "name":  "lblBatchSize",
+                         "type":  "Label",
+                         "category":  "feedback",
+                         "prefix":  "lbl"
+                     },
+                     {
+                         "name":  "chkFireAndForget",
+                         "type":  "CheckBox",
+                         "category":  "input-toggle",
+                         "prefix":  "chk"
+                     },
+                     {
+                         "name":  "toolTip",
+                         "type":  "ToolTip",
+                         "category":  "other",
+                         "prefix":  ""
+                     }
+                 ],
+    "summary":  {
+                    "total":  55,
+                    "buttons":  7,
+                    "grids":  3,
+                    "dropdowns":  3,
+                    "textBoxes":  4,
+                    "checkBoxes":  3,
+                    "numerics":  3,
+                    "feedback":  16,
+                    "navigation":  4,
+                    "layout":  11
+                },
+    "actionButtons":  [
+                          "btnLoadEntities",
+                          "btnBrowseCsv",
+                          "btnPreviewFetchXml",
+                          "btnPreviewSql",
+                          "btnStart",
+                          "btnStop",
+                          "btnFormatXml"
+                      ],
+    "primaryAction":  "btnLoadEntities"
+}
