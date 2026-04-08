@@ -572,6 +572,7 @@ namespace SpeedyNtoNAssociatePlugin.Tests
                 engine.RunAsync(mock, pairs, relationship,
                     degreeOfParallelism: 1, tracker, bypassPlugins: false,
                     verboseLogging: false, maxRetries: 0, batchSize: 1,
+                    fireAndForget: false, useDirectInsert: false,
                     CancellationToken.None).GetAwaiter().GetResult();
 
                 tracker.FlushBatch();
@@ -625,6 +626,7 @@ namespace SpeedyNtoNAssociatePlugin.Tests
                 engine.RunAsync(mock, pairs, relationship,
                     degreeOfParallelism: 1, tracker, bypassPlugins: false,
                     verboseLogging: false, maxRetries: 0, batchSize: 1,
+                    fireAndForget: false, useDirectInsert: false,
                     CancellationToken.None).GetAwaiter().GetResult();
 
                 tracker.FlushBatch();
@@ -677,6 +679,7 @@ namespace SpeedyNtoNAssociatePlugin.Tests
                     engine.RunAsync(mock, pairs, relationship,
                         degreeOfParallelism: 1, tracker, bypassPlugins: false,
                         verboseLogging: false, maxRetries: 0, batchSize: 1,
+                        fireAndForget: false, useDirectInsert: false,
                         cts.Token).GetAwaiter().GetResult();
                 }
                 catch (OperationCanceledException)
@@ -731,6 +734,7 @@ namespace SpeedyNtoNAssociatePlugin.Tests
                 engine.RunAsync(mock, new[] { pair1, pair2, pair3 }, relationship,
                     degreeOfParallelism: 1, tracker, bypassPlugins: false,
                     verboseLogging: false, maxRetries: 0, batchSize: 1,
+                    fireAndForget: false, useDirectInsert: false,
                     CancellationToken.None).GetAwaiter().GetResult();
 
                 tracker.FlushBatch();
