@@ -3,12 +3,14 @@ using SpeedyNtoNAssociatePlugin.Models;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace SpeedyNtoNAssociatePlugin.Services
 {
     public class ResumeTracker : IDisposable
     {
-        private const int FlushThreshold = 100;
+        private int _flushThreshold = 100;
+        private Timer _flushTimer;
 
         private readonly string _dbPath;
         private SqliteConnection _connection;
@@ -20,6 +22,12 @@ namespace SpeedyNtoNAssociatePlugin.Services
         public ResumeTracker(string dbPath)
         {
             _dbPath = dbPath;
+        }
+
+        public void Configure(int batchSize, int parallelism)
+        {
+            _flushThreshold = Math.Max(batchSize * parallelism, 500);
+            _flushTimer = new Timer(_ => FlushBatch(), null, 2000, 2000);
         }
 
         public void Open()
@@ -98,8 +106,8 @@ namespace SpeedyNtoNAssociatePlugin.Services
             var key = pair.NormalizedKey();
             _buffer.Enqueue(new AssociationPair { Guid1 = key.Item1, Guid2 = key.Item2 });
 
-            var count = System.Threading.Interlocked.Increment(ref _bufferedCount);
-            if (count >= FlushThreshold)
+            var count = Interlocked.Increment(ref _bufferedCount);
+            if (count >= _flushThreshold)
                 FlushBatch();
         }
 
@@ -107,9 +115,9 @@ namespace SpeedyNtoNAssociatePlugin.Services
         {
             lock (_flushLock)
             {
-                if (_buffer.IsEmpty || _connection == null) return;
+                if (_disposed || _buffer.IsEmpty || _connection == null) return;
 
-                System.Threading.Interlocked.Exchange(ref _bufferedCount, 0);
+                Interlocked.Exchange(ref _bufferedCount, 0);
 
                 using (var transaction = _connection.BeginTransaction())
                 {
@@ -160,6 +168,8 @@ namespace SpeedyNtoNAssociatePlugin.Services
             if (_disposed) return;
             _disposed = true;
 
+            _flushTimer?.Dispose();
+            _flushTimer = null;
             FlushBatch();
             _connection?.Close();
             _connection?.Dispose();
