@@ -51,7 +51,6 @@ Search for "Speedy N:N Associate" in the XrmToolBox Tool Store.
 | Bypass plugins/workflows | Checked | Skip custom plugins for faster processing |
 | Log every pair | Checked | Verbose logging; uncheck for errors-only |
 | Skip per-item responses | Checked | Fire-and-forget batch mode -- skips per-item response tracking for faster server processing |
-| Direct intersect insert | Checked | Writes directly to the intersect table instead of using AssociateRequest; requires Bypass Plugins |
 
 ## CSV Format
 

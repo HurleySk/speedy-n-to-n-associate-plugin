@@ -496,10 +496,8 @@ namespace SpeedyNtoNAssociatePlugin
             this.nudBatchSize = new System.Windows.Forms.NumericUpDown();
             this.lblBatchSize = new System.Windows.Forms.Label();
             this.chkFireAndForget = new System.Windows.Forms.CheckBox();
-            this.chkDirectInsert = new System.Windows.Forms.CheckBox();
             this.toolTip = new System.Windows.Forms.ToolTip();
             ((System.ComponentModel.ISupportInitialize)(this.nudBatchSize)).BeginInit();
-            this.grpSettings.Controls.Add(this.chkDirectInsert);
             this.grpSettings.Controls.Add(this.chkFireAndForget);
             this.grpSettings.Controls.Add(this.nudBatchSize);
             this.grpSettings.Controls.Add(this.lblBatchSize);
@@ -565,7 +563,6 @@ namespace SpeedyNtoNAssociatePlugin
             this.chkBypassPlugins.TabIndex = 4;
             this.chkBypassPlugins.Text = "Bypass plugins/workflows";
             this.chkBypassPlugins.UseVisualStyleBackColor = true;
-            this.chkBypassPlugins.CheckedChanged += new System.EventHandler(this.chkBypassPlugins_CheckedChanged);
             //
             // chkVerboseLog
             //
@@ -610,20 +607,6 @@ namespace SpeedyNtoNAssociatePlugin
             this.chkFireAndForget.Text = "Skip per-item responses";
             this.chkFireAndForget.UseVisualStyleBackColor = true;
             this.toolTip.SetToolTip(this.chkFireAndForget, "Skips per-item response tracking for faster server processing.\nBatches assume success unless the entire call fails (transport error).\nOnly applies when Batch Size > 1.");
-            //
-            // chkDirectInsert
-            //
-            this.chkDirectInsert.AutoSize = true;
-            this.chkDirectInsert.Checked = true;
-            this.chkDirectInsert.CheckState = System.Windows.Forms.CheckState.Checked;
-            this.chkDirectInsert.Location = new System.Drawing.Point(200, 46);
-            this.chkDirectInsert.Name = "chkDirectInsert";
-            this.chkDirectInsert.Size = new System.Drawing.Size(155, 17);
-            this.chkDirectInsert.TabIndex = 9;
-            this.chkDirectInsert.Text = "Direct intersect insert";
-            this.chkDirectInsert.UseVisualStyleBackColor = true;
-            this.chkDirectInsert.CheckedChanged += new System.EventHandler(this.chkDirectInsert_CheckedChanged);
-            this.toolTip.SetToolTip(this.chkDirectInsert, "Writes directly to the intersect table instead of using AssociateRequest.\nFaster but skips relationship validation. Requires Bypass Plugins.");
             //
             // grpProgress
             //
@@ -813,7 +796,6 @@ namespace SpeedyNtoNAssociatePlugin
         private System.Windows.Forms.NumericUpDown nudBatchSize;
         private System.Windows.Forms.Label lblBatchSize;
         private System.Windows.Forms.CheckBox chkFireAndForget;
-        private System.Windows.Forms.CheckBox chkDirectInsert;
         private System.Windows.Forms.ToolTip toolTip;
     }
 }

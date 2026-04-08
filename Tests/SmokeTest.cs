@@ -5,7 +5,6 @@ using SpeedyNtoNAssociatePlugin.Models;
 using SpeedyNtoNAssociatePlugin.Services;
 using SpeedyNtoNAssociatePlugin.Tests.Mocks;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -59,7 +58,6 @@ namespace SpeedyNtoNAssociatePlugin.Tests
 
             // Performance feature tests
             TestFireAndForgetBatchMode();
-            TestDirectInsertMode();
             TestBatchModeResponseMap();
 
             // Test data generator
@@ -581,7 +579,7 @@ namespace SpeedyNtoNAssociatePlugin.Tests
                 engine.RunAsync(mock, pairs, relationship,
                     degreeOfParallelism: 1, tracker, bypassPlugins: false,
                     verboseLogging: false, maxRetries: 0, batchSize: 1,
-                    fireAndForget: false, useDirectInsert: false,
+                    fireAndForget: false,
                     CancellationToken.None).GetAwaiter().GetResult();
 
                 tracker.FlushBatch();
@@ -635,7 +633,7 @@ namespace SpeedyNtoNAssociatePlugin.Tests
                 engine.RunAsync(mock, pairs, relationship,
                     degreeOfParallelism: 1, tracker, bypassPlugins: false,
                     verboseLogging: false, maxRetries: 0, batchSize: 1,
-                    fireAndForget: false, useDirectInsert: false,
+                    fireAndForget: false,
                     CancellationToken.None).GetAwaiter().GetResult();
 
                 tracker.FlushBatch();
@@ -688,7 +686,7 @@ namespace SpeedyNtoNAssociatePlugin.Tests
                     engine.RunAsync(mock, pairs, relationship,
                         degreeOfParallelism: 1, tracker, bypassPlugins: false,
                         verboseLogging: false, maxRetries: 0, batchSize: 1,
-                        fireAndForget: false, useDirectInsert: false,
+                        fireAndForget: false,
                         cts.Token).GetAwaiter().GetResult();
                 }
                 catch (OperationCanceledException)
@@ -743,7 +741,7 @@ namespace SpeedyNtoNAssociatePlugin.Tests
                 engine.RunAsync(mock, new[] { pair1, pair2, pair3 }, relationship,
                     degreeOfParallelism: 1, tracker, bypassPlugins: false,
                     verboseLogging: false, maxRetries: 0, batchSize: 1,
-                    fireAndForget: false, useDirectInsert: false,
+                    fireAndForget: false,
                     CancellationToken.None).GetAwaiter().GetResult();
 
                 tracker.FlushBatch();
@@ -819,7 +817,7 @@ namespace SpeedyNtoNAssociatePlugin.Tests
                 engine.RunAsync(mock, pairs, relationship,
                     degreeOfParallelism: 1, tracker, bypassPlugins: false,
                     verboseLogging: false, maxRetries: 0, batchSize: 5,
-                    fireAndForget: true, useDirectInsert: false,
+                    fireAndForget: true,
                     CancellationToken.None).GetAwaiter().GetResult();
 
                 tracker.FlushBatch();
@@ -832,66 +830,9 @@ namespace SpeedyNtoNAssociatePlugin.Tests
             finally { CleanupDb(dbPath); }
         }
 
-        static void TestDirectInsertMode()
-        {
-            Console.WriteLine("\nTest: Direct Intersect Insert Mode");
-
-            var dbPath = Path.Combine(Path.GetTempPath(), "SpeedyNtoN_di_" + Guid.NewGuid().ToString("N") + ".db");
-            try
-            {
-                var mock = new MockOrganizationService();
-                var createRequests = new ConcurrentBag<CreateRequest>();
-                mock.ExecuteHandler = req =>
-                {
-                    if (req is CreateRequest cr)
-                    {
-                        createRequests.Add(cr);
-                        return new CreateResponse { Results = { ["id"] = Guid.NewGuid() } };
-                    }
-                    return new OrganizationResponse();
-                };
-
-                var pair = new AssociationPair { Guid1 = Guid.NewGuid(), Guid2 = Guid.NewGuid() };
-
-                var relationship = new RelationshipInfo
-                {
-                    SchemaName = "test_nn",
-                    Entity1LogicalName = "account",
-                    Entity2LogicalName = "contact",
-                    IntersectEntityName = "test_account_contact",
-                    Entity1IntersectAttribute = "accountid",
-                    Entity2IntersectAttribute = "contactid"
-                };
-
-                var tracker = new ResumeTracker(dbPath);
-                tracker.Open();
-
-                var engine = new AssociationEngine();
-                engine.RunAsync(mock, new[] { pair }, relationship,
-                    degreeOfParallelism: 1, tracker, bypassPlugins: true,
-                    verboseLogging: false, maxRetries: 0, batchSize: 1,
-                    fireAndForget: false, useDirectInsert: true,
-                    CancellationToken.None).GetAwaiter().GetResult();
-
-                tracker.FlushBatch();
-
-                Assert(createRequests.Count == 1,
-                    "Direct insert: CreateRequest sent (not AssociateRequest)");
-
-                var captured = createRequests.First();
-                Assert(captured.Target.LogicalName == "test_account_contact",
-                    "Direct insert: targets intersect entity");
-                Assert((Guid)captured.Target["accountid"] == pair.Guid1,
-                    "Direct insert: Entity1IntersectAttribute set to Guid1");
-                Assert((Guid)captured.Target["contactid"] == pair.Guid2,
-                    "Direct insert: Entity2IntersectAttribute set to Guid2");
-                Assert(mock.ExecutedRequests.ToArray().All(r => r is CreateRequest),
-                    "Direct insert: no AssociateRequests sent");
-
-                tracker.Dispose();
-            }
-            finally { CleanupDb(dbPath); }
-        }
+        // NOTE: Direct intersect insert (CreateRequest on intersect entity) was tested here
+        // but removed — Dataverse does not support Create on intersect entity types.
+        // AssociateRequest is the only supported path for N:N relationships.
 
         static void TestBatchModeResponseMap()
         {
@@ -953,7 +894,7 @@ namespace SpeedyNtoNAssociatePlugin.Tests
                 engine.RunAsync(mock, pairs, relationship,
                     degreeOfParallelism: 1, tracker, bypassPlugins: false,
                     verboseLogging: false, maxRetries: 0, batchSize: 2,
-                    fireAndForget: false, useDirectInsert: false,
+                    fireAndForget: false,
                     CancellationToken.None).GetAwaiter().GetResult();
 
                 tracker.FlushBatch();
