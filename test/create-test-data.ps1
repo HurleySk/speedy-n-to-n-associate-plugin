@@ -5,12 +5,18 @@
 # test records, and exports GUID pairs to a CSV for plugin testing.
 #
 # Usage: .\test\create-test-data.ps1
+#        .\test\create-test-data.ps1 -EnvironmentUrl "https://org.crm.dynamics.com"
+#        .\test\create-test-data.ps1 -Entity1Name "project" -Entity2Name "resource" -Entity1DisplayName "Project" -Entity2DisplayName "Resource"
 # =============================================================================
 
 param(
     [string]$EnvironmentUrl,
     [int]$RecordsPerEntity = 20,
-    [string]$PublisherPrefix = "spdy"
+    [string]$PublisherPrefix = "spdy",
+    [string]$Entity1Name = "testwidget",
+    [string]$Entity2Name = "testgadget",
+    [string]$Entity1DisplayName = "Test Widget",
+    [string]$Entity2DisplayName = "Test Gadget"
 )
 
 $ErrorActionPreference = "Stop"
@@ -45,11 +51,9 @@ Write-Host "Connected successfully!" -ForegroundColor Green
 Write-Host "Org: $($conn.ConnectedOrgFriendlyName)" -ForegroundColor Gray
 
 # --- Entity and relationship names ---
-$entity1LogicalName = "${PublisherPrefix}_testwidget"
-$entity2LogicalName = "${PublisherPrefix}_testgadget"
-$relationshipSchemaName = "${PublisherPrefix}_testwidget_testgadget"
-$entity1DisplayName = "Test Widget"
-$entity2DisplayName = "Test Gadget"
+$entity1LogicalName = "${PublisherPrefix}_${Entity1Name}"
+$entity2LogicalName = "${PublisherPrefix}_${Entity2Name}"
+$relationshipSchemaName = "${PublisherPrefix}_${Entity1Name}_${Entity2Name}"
 
 # ==========================================================================
 # Step 1: Create a publisher (or find existing one)
@@ -168,14 +172,14 @@ $entity1Exists = Test-EntityExists $entity1LogicalName
 $entity2Exists = Test-EntityExists $entity2LogicalName
 
 if (-not $entity1Exists) {
-    New-TestEntity $entity1LogicalName $entity1DisplayName "Test Widgets"
+    New-TestEntity $entity1LogicalName $Entity1DisplayName "${Entity1DisplayName}s"
 }
 else {
     Write-Host "  Entity '$entity1LogicalName' already exists." -ForegroundColor Green
 }
 
 if (-not $entity2Exists) {
-    New-TestEntity $entity2LogicalName $entity2DisplayName "Test Gadgets"
+    New-TestEntity $entity2LogicalName $Entity2DisplayName "${Entity2DisplayName}s"
 }
 else {
     Write-Host "  Entity '$entity2LogicalName' already exists." -ForegroundColor Green
@@ -203,19 +207,19 @@ if (-not $relExists) {
 
     $request = New-Object Microsoft.Xrm.Sdk.Messages.CreateManyToManyRequest
     $request.SolutionUniqueName = $solutionUniqueName
-    $request.IntersectEntitySchemaName = "${PublisherPrefix}_widget_gadget"
+    $request.IntersectEntitySchemaName = "${PublisherPrefix}_${Entity1Name}_${Entity2Name}_int"
 
     $relationship = New-Object Microsoft.Xrm.Sdk.Metadata.ManyToManyRelationshipMetadata
     $relationship.SchemaName = $relationshipSchemaName
     $relationship.Entity1LogicalName = $entity1LogicalName
     $relationship.Entity2LogicalName = $entity2LogicalName
-    $relationship.IntersectEntityName = "${PublisherPrefix}_widget_gadget"
+    $relationship.IntersectEntityName = "${PublisherPrefix}_${Entity1Name}_${Entity2Name}_int"
     $relationship.Entity1AssociatedMenuConfiguration = New-Object Microsoft.Xrm.Sdk.Metadata.AssociatedMenuConfiguration
     $relationship.Entity1AssociatedMenuConfiguration.Behavior = [Microsoft.Xrm.Sdk.Metadata.AssociatedMenuBehavior]::UseLabel
-    $relationship.Entity1AssociatedMenuConfiguration.Label = New-Object Microsoft.Xrm.Sdk.Label("Test Gadgets", 1033)
+    $relationship.Entity1AssociatedMenuConfiguration.Label = New-Object Microsoft.Xrm.Sdk.Label("${Entity2DisplayName}s", 1033)
     $relationship.Entity2AssociatedMenuConfiguration = New-Object Microsoft.Xrm.Sdk.Metadata.AssociatedMenuConfiguration
     $relationship.Entity2AssociatedMenuConfiguration.Behavior = [Microsoft.Xrm.Sdk.Metadata.AssociatedMenuBehavior]::UseLabel
-    $relationship.Entity2AssociatedMenuConfiguration.Label = New-Object Microsoft.Xrm.Sdk.Label("Test Widgets", 1033)
+    $relationship.Entity2AssociatedMenuConfiguration.Label = New-Object Microsoft.Xrm.Sdk.Label("${Entity1DisplayName}s", 1033)
 
     $request.ManyToManyRelationship = $relationship
 
@@ -252,9 +256,9 @@ $entity1Ids = @()
 $entity2Ids = @()
 
 # Create Entity 1 records
-Write-Host "`n  Creating $entity1DisplayName records..." -ForegroundColor Yellow
+Write-Host "`n  Creating $Entity1DisplayName records..." -ForegroundColor Yellow
 for ($i = 1; $i -le $RecordsPerEntity; $i++) {
-    $name = "Test Widget $i"
+    $name = "$Entity1DisplayName $i"
     try {
         $id = New-CrmRecord -conn $conn -EntityLogicalName $entity1LogicalName -Fields @{
             $entity1PrimaryAttr = $name
@@ -268,9 +272,9 @@ for ($i = 1; $i -le $RecordsPerEntity; $i++) {
 }
 
 # Create Entity 2 records
-Write-Host "`n  Creating $entity2DisplayName records..." -ForegroundColor Yellow
+Write-Host "`n  Creating $Entity2DisplayName records..." -ForegroundColor Yellow
 for ($i = 1; $i -le $RecordsPerEntity; $i++) {
-    $name = "Test Gadget $i"
+    $name = "$Entity2DisplayName $i"
     try {
         $id = New-CrmRecord -conn $conn -EntityLogicalName $entity2LogicalName -Fields @{
             $entity2PrimaryAttr = $name
@@ -340,7 +344,7 @@ $fetchXml1 = @"
   <entity name="$entity1LogicalName">
     <attribute name="${entity1LogicalName}id" />
     <filter>
-      <condition attribute="$entity1PrimaryAttr" operator="like" value="Test Widget%" />
+      <condition attribute="$entity1PrimaryAttr" operator="like" value="$Entity1DisplayName%" />
     </filter>
   </entity>
 </fetch>
@@ -351,7 +355,7 @@ $fetchXml2 = @"
   <entity name="$entity2LogicalName">
     <attribute name="${entity2LogicalName}id" />
     <filter>
-      <condition attribute="$entity2PrimaryAttr" operator="like" value="Test Gadget%" />
+      <condition attribute="$entity2PrimaryAttr" operator="like" value="$Entity2DisplayName%" />
     </filter>
   </entity>
 </fetch>
@@ -364,13 +368,29 @@ $fetchXml1 | Out-File -FilePath $fetchPath1 -Encoding utf8
 $fetchXml2 | Out-File -FilePath $fetchPath2 -Encoding utf8
 
 Write-Host "`n=== FetchXML Queries (for testing FetchXML tab) ===" -ForegroundColor Cyan
-Write-Host "`nSource FetchXML ($entity1DisplayName):" -ForegroundColor Yellow
+Write-Host "`nSource FetchXML ($Entity1DisplayName):" -ForegroundColor Yellow
 Write-Host $fetchXml1 -ForegroundColor Gray
-Write-Host "`nTarget FetchXML ($entity2DisplayName):" -ForegroundColor Yellow
+Write-Host "`nTarget FetchXML ($Entity2DisplayName):" -ForegroundColor Yellow
 Write-Host $fetchXml2 -ForegroundColor Gray
 Write-Host "`nSaved to:" -ForegroundColor Green
 Write-Host "  $fetchPath1" -ForegroundColor White
 Write-Host "  $fetchPath2" -ForegroundColor White
+
+# Generate SQL query
+$sqlQuery = @"
+SELECT w.${entity1LogicalName}id, g.${entity2LogicalName}id
+FROM $entity1LogicalName w
+CROSS JOIN $entity2LogicalName g
+WHERE w.statecode = 0
+  AND g.statecode = 0
+"@
+
+$sqlPath = Join-Path $downloadsDir "sql-query.sql"
+$sqlQuery | Out-File -FilePath $sqlPath -Encoding utf8
+
+Write-Host "`n=== SQL Query (for testing SQL tab — requires TDS endpoint) ===" -ForegroundColor Cyan
+Write-Host $sqlQuery -ForegroundColor Gray
+Write-Host "`nSaved to: $sqlPath" -ForegroundColor Green
 
 Write-Host "`n=== Next Steps ===" -ForegroundColor Yellow
 Write-Host "  1. Open XrmToolBox and connect to $EnvironmentUrl" -ForegroundColor Gray

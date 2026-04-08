@@ -94,9 +94,37 @@ The plugin auto-detects which columns contain GUIDs and uses the first two as th
 
 ## Test Data
 
-Run the test data generator to set up test entities and records:
+Run the test data generator to create two custom entities with an N:N relationship, populate them with test records, and export GUID pairs + sample queries for plugin testing.
+
 ```powershell
+# Basic usage (creates spdy_testwidget and spdy_testgadget)
 .\test\create-test-data.ps1 -EnvironmentUrl "https://your-org.crm.dynamics.com"
+
+# Custom entity names
+.\test\create-test-data.ps1 -EnvironmentUrl "https://your-org.crm.dynamics.com" `
+    -Entity1Name "project" -Entity2Name "resource" `
+    -Entity1DisplayName "Project" -Entity2DisplayName "Resource"
+
+# Custom prefix and record count
+.\test\create-test-data.ps1 -EnvironmentUrl "https://your-org.crm.dynamics.com" `
+    -PublisherPrefix "dev" -RecordsPerEntity 50
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `-EnvironmentUrl` | *(prompted)* | Dataverse environment URL |
+| `-RecordsPerEntity` | `20` | Number of test records per entity |
+| `-PublisherPrefix` | `spdy` | Publisher/entity prefix |
+| `-Entity1Name` | `testwidget` | Logical name suffix for entity 1 |
+| `-Entity2Name` | `testgadget` | Logical name suffix for entity 2 |
+| `-Entity1DisplayName` | `Test Widget` | Display name for entity 1 |
+| `-Entity2DisplayName` | `Test Gadget` | Display name for entity 2 |
+
+The script is idempotent — it skips entities and relationships that already exist. Output files (CSV pairs, FetchXML queries, SQL query) are saved to your Downloads folder.
+
+To generate a standalone CSV with random GUID pairs (no Dataverse connection needed):
+```powershell
+.\test\generate-csv.ps1 -Count 50000
 ```
 
 ## License
