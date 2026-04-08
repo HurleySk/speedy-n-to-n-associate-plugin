@@ -395,7 +395,7 @@ WHERE w.statecode = 0
 $sqlPath = Join-Path $downloadsDir "sql-query.sql"
 $sqlQuery | Out-File -FilePath $sqlPath -Encoding utf8
 
-Write-Host "`n=== SQL Query (for testing SQL tab — requires TDS endpoint) ===" -ForegroundColor Cyan
+Write-Host "`n=== SQL Query (for testing SQL tab -- requires TDS endpoint) ===" -ForegroundColor Cyan
 Write-Host $sqlQuery -ForegroundColor Gray
 Write-Host "`nSaved to: $sqlPath" -ForegroundColor Green
 
