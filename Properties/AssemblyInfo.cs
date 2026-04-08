@@ -1,5 +1,8 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+
+[assembly: InternalsVisibleTo("Tests")]
 
 [assembly: AssemblyTitle("Speedy N:N Associate")]
 [assembly: AssemblyDescription("Bulk associate records via N:N relationships with parallel processing")]
