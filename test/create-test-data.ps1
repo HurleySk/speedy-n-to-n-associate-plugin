@@ -54,6 +54,13 @@ Write-Host "Org: $($conn.ConnectedOrgFriendlyName)" -ForegroundColor Gray
 $entity1LogicalName = "${PublisherPrefix}_${Entity1Name}"
 $entity2LogicalName = "${PublisherPrefix}_${Entity2Name}"
 $relationshipSchemaName = "${PublisherPrefix}_${Entity1Name}_${Entity2Name}"
+$intersectEntityName = "${PublisherPrefix}_${Entity1Name}_${Entity2Name}_int"
+
+# Dataverse enforces 128-char max on entity logical names
+if ($intersectEntityName.Length -gt 128) {
+    Write-Host "ERROR: Intersect entity name '$intersectEntityName' exceeds 128-character limit ($($intersectEntityName.Length) chars). Use shorter entity names." -ForegroundColor Red
+    exit 1
+}
 
 # ==========================================================================
 # Step 1: Create a publisher (or find existing one)
@@ -207,13 +214,13 @@ if (-not $relExists) {
 
     $request = New-Object Microsoft.Xrm.Sdk.Messages.CreateManyToManyRequest
     $request.SolutionUniqueName = $solutionUniqueName
-    $request.IntersectEntitySchemaName = "${PublisherPrefix}_${Entity1Name}_${Entity2Name}_int"
+    $request.IntersectEntitySchemaName = $intersectEntityName
 
     $relationship = New-Object Microsoft.Xrm.Sdk.Metadata.ManyToManyRelationshipMetadata
     $relationship.SchemaName = $relationshipSchemaName
     $relationship.Entity1LogicalName = $entity1LogicalName
     $relationship.Entity2LogicalName = $entity2LogicalName
-    $relationship.IntersectEntityName = "${PublisherPrefix}_${Entity1Name}_${Entity2Name}_int"
+    $relationship.IntersectEntityName = $intersectEntityName
     $relationship.Entity1AssociatedMenuConfiguration = New-Object Microsoft.Xrm.Sdk.Metadata.AssociatedMenuConfiguration
     $relationship.Entity1AssociatedMenuConfiguration.Behavior = [Microsoft.Xrm.Sdk.Metadata.AssociatedMenuBehavior]::UseLabel
     $relationship.Entity1AssociatedMenuConfiguration.Label = New-Object Microsoft.Xrm.Sdk.Label("${Entity2DisplayName}s", 1033)
@@ -287,7 +294,7 @@ for ($i = 1; $i -le $RecordsPerEntity; $i++) {
     }
 }
 
-Write-Host "`n  Created $($entity1Ids.Count) widgets and $($entity2Ids.Count) gadgets." -ForegroundColor Green
+Write-Host "`n  Created $($entity1Ids.Count) ${Entity1DisplayName}s and $($entity2Ids.Count) ${Entity2DisplayName}s." -ForegroundColor Green
 
 # ==========================================================================
 # Step 6: Generate random pairs and export CSV
@@ -333,8 +340,8 @@ Write-Host "  CSV exported to: $csvPath" -ForegroundColor Green
 # ==========================================================================
 Write-Host "`n=== Summary ===" -ForegroundColor Cyan
 Write-Host "  Environment:   $($conn.ConnectedOrgFriendlyName)" -ForegroundColor White
-Write-Host "  Entity 1:      $entity1LogicalName ($entity1DisplayName) - $($entity1Ids.Count) records" -ForegroundColor White
-Write-Host "  Entity 2:      $entity2LogicalName ($entity2DisplayName) - $($entity2Ids.Count) records" -ForegroundColor White
+Write-Host "  Entity 1:      $entity1LogicalName ($Entity1DisplayName) - $($entity1Ids.Count) records" -ForegroundColor White
+Write-Host "  Entity 2:      $entity2LogicalName ($Entity2DisplayName) - $($entity2Ids.Count) records" -ForegroundColor White
 Write-Host "  Relationship:  $relationshipSchemaName" -ForegroundColor White
 Write-Host "  Pairs:         $($pairs.Count)" -ForegroundColor White
 Write-Host "  CSV:           $csvPath" -ForegroundColor White
