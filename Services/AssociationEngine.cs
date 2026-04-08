@@ -70,6 +70,8 @@ namespace SpeedyNtoNAssociatePlugin.Services
             bool verboseLogging,
             int maxRetries,
             int batchSize,
+            bool fireAndForget,
+            bool useDirectInsert,
             CancellationToken cancellationToken)
         {
             var completedSet = resumeTracker.GetCompletedSet();
@@ -122,13 +124,14 @@ namespace SpeedyNtoNAssociatePlugin.Services
                 if (batchSize <= 1)
                 {
                     await RunSingleMode(buffer, clients, clientLocks, poolSize, primaryClient,
-                        relationship, bypassPlugins, verboseLogging, maxRetries, resumeTracker,
-                        state, sw, degreeOfParallelism, cancellationToken);
+                        relationship, bypassPlugins, verboseLogging, maxRetries, useDirectInsert,
+                        resumeTracker, state, sw, degreeOfParallelism, cancellationToken);
                 }
                 else
                 {
                     await RunBatchMode(buffer, clients, clientLocks, poolSize, primaryClient,
-                        relationship, bypassPlugins, verboseLogging, maxRetries, batchSize, resumeTracker,
+                        relationship, bypassPlugins, verboseLogging, maxRetries, batchSize,
+                        fireAndForget, useDirectInsert, resumeTracker,
                         state, sw, degreeOfParallelism, cancellationToken);
                 }
 
@@ -153,8 +156,8 @@ namespace SpeedyNtoNAssociatePlugin.Services
             IOrganizationService[] clients, object[] clientLocks, int poolSize,
             CrmServiceClient primaryClient, RelationshipInfo relationship,
             bool bypassPlugins, bool verboseLogging, int maxRetries,
-            ResumeTracker resumeTracker, RunState state, Stopwatch sw,
-            int degreeOfParallelism, CancellationToken cancellationToken)
+            bool useDirectInsert, ResumeTracker resumeTracker, RunState state,
+            Stopwatch sw, int degreeOfParallelism, CancellationToken cancellationToken)
         {
             using (var semaphore = new SemaphoreSlim(degreeOfParallelism))
             {
@@ -182,7 +185,9 @@ namespace SpeedyNtoNAssociatePlugin.Services
 
                         var clientIndex = (int)((uint)Interlocked.Increment(ref state.RoundRobin) % poolSize);
                         var client = clients[clientIndex];
-                        var request = BuildAssociateRequest(capturedPair, relationship, bypassPlugins);
+                        var request = useDirectInsert
+                            ? (OrganizationRequest)BuildCreateIntersectRequest(capturedPair, relationship, bypassPlugins)
+                            : BuildAssociateRequest(capturedPair, relationship, bypassPlugins);
 
                         for (int attempt = 0; attempt <= maxRetries; attempt++)
                         {
@@ -247,7 +252,8 @@ namespace SpeedyNtoNAssociatePlugin.Services
             IOrganizationService[] clients, object[] clientLocks, int poolSize,
             CrmServiceClient primaryClient, RelationshipInfo relationship,
             bool bypassPlugins, bool verboseLogging, int maxRetries, int batchSize,
-            ResumeTracker resumeTracker, RunState state, Stopwatch sw,
+            bool fireAndForget, bool useDirectInsert, ResumeTracker resumeTracker,
+            RunState state, Stopwatch sw,
             int degreeOfParallelism, CancellationToken cancellationToken)
         {
             using (var semaphore = new SemaphoreSlim(degreeOfParallelism))
@@ -278,7 +284,7 @@ namespace SpeedyNtoNAssociatePlugin.Services
                         {
                             await ProcessBatch(batchToProcess, clients, clientLocks, poolSize,
                                 primaryClient, relationship, bypassPlugins, verboseLogging, maxRetries,
-                                resumeTracker, state, cancellationToken);
+                                fireAndForget, useDirectInsert, resumeTracker, state, cancellationToken);
                             TryFireProgressUpdate(sw, ref state.LastProgressUpdateMs, state.Completed, state.Duplicates, state.Errors, state.TotalKnown);
                         }
                         finally
@@ -300,7 +306,7 @@ namespace SpeedyNtoNAssociatePlugin.Services
                     {
                         await ProcessBatch(finalBatch, clients, clientLocks, poolSize,
                             primaryClient, relationship, bypassPlugins, verboseLogging, maxRetries,
-                            resumeTracker, state, cancellationToken);
+                            fireAndForget, useDirectInsert, resumeTracker, state, cancellationToken);
                         TryFireProgressUpdate(sw, ref state.LastProgressUpdateMs, state.Completed, state.Duplicates, state.Errors, state.TotalKnown);
                     }
                     finally
@@ -319,6 +325,7 @@ namespace SpeedyNtoNAssociatePlugin.Services
             IOrganizationService[] clients, object[] clientLocks, int poolSize,
             CrmServiceClient primaryClient, RelationshipInfo relationship,
             bool bypassPlugins, bool verboseLogging, int maxRetries,
+            bool fireAndForget, bool useDirectInsert,
             ResumeTracker resumeTracker, RunState state,
             CancellationToken cancellationToken)
         {
@@ -335,17 +342,35 @@ namespace SpeedyNtoNAssociatePlugin.Services
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var multiRequest = BuildExecuteMultipleBatch(pendingPairs, relationship, bypassPlugins);
+                var multiRequest = BuildExecuteMultipleBatch(pendingPairs, relationship, bypassPlugins, useDirectInsert, fireAndForget);
 
                 try
                 {
                     var response = (ExecuteMultipleResponse)client.Execute(multiRequest);
+
+                    if (fireAndForget)
+                    {
+                        // No per-item responses — treat entire batch as succeeded
+                        foreach (var pair in pendingPairs)
+                        {
+                            Interlocked.Increment(ref state.Completed);
+                            resumeTracker.TrackCompleted(pair);
+                        }
+                        DecayThrottleBackoff(ref state.ThrottleBackoffMs);
+                        break;
+                    }
+
                     var retryList = new List<AssociationPair>();
+
+                    // O(1) lookup instead of O(n) scan per item
+                    var responseMap = new Dictionary<int, ExecuteMultipleResponseItem>(response.Responses.Count);
+                    foreach (var r in response.Responses)
+                        responseMap[r.RequestIndex] = r;
 
                     for (int i = 0; i < pendingPairs.Count; i++)
                     {
                         var pair = pendingPairs[i];
-                        var itemResponse = response.Responses.FirstOrDefault(r => r.RequestIndex == i);
+                        responseMap.TryGetValue(i, out var itemResponse);
 
                         if (itemResponse == null || itemResponse.Fault == null)
                         {
@@ -415,21 +440,24 @@ namespace SpeedyNtoNAssociatePlugin.Services
         }
 
         private static ExecuteMultipleRequest BuildExecuteMultipleBatch(
-            List<AssociationPair> pairs, RelationshipInfo relationship, bool bypassPlugins)
+            List<AssociationPair> pairs, RelationshipInfo relationship, bool bypassPlugins,
+            bool useDirectInsert, bool fireAndForget)
         {
             var multiRequest = new ExecuteMultipleRequest
             {
                 Settings = new ExecuteMultipleSettings
                 {
-                    ContinueOnError = true,
-                    ReturnResponses = true
+                    ContinueOnError = !fireAndForget,
+                    ReturnResponses = !fireAndForget
                 },
                 Requests = new OrganizationRequestCollection()
             };
 
             foreach (var pair in pairs)
             {
-                multiRequest.Requests.Add(BuildAssociateRequest(pair, relationship, bypassPlugins));
+                multiRequest.Requests.Add(useDirectInsert
+                    ? (OrganizationRequest)BuildCreateIntersectRequest(pair, relationship, bypassPlugins)
+                    : BuildAssociateRequest(pair, relationship, bypassPlugins));
             }
 
             return multiRequest;
@@ -516,6 +544,24 @@ namespace SpeedyNtoNAssociatePlugin.Services
                     PrimaryEntityRole = EntityRole.Referencing
                 }
             };
+
+            if (bypassPlugins)
+            {
+                request.Parameters[BypassLogicParam] = BypassLogicValue;
+                request.Parameters[SuppressCallbackParam] = true;
+            }
+
+            return request;
+        }
+
+        private static CreateRequest BuildCreateIntersectRequest(
+            AssociationPair pair, RelationshipInfo relationship, bool bypassPlugins)
+        {
+            var intersectRecord = new Entity(relationship.IntersectEntityName);
+            intersectRecord[relationship.Entity1IntersectAttribute] = pair.Guid1;
+            intersectRecord[relationship.Entity2IntersectAttribute] = pair.Guid2;
+
+            var request = new CreateRequest { Target = intersectRecord };
 
             if (bypassPlugins)
             {

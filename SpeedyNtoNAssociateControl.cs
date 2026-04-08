@@ -271,6 +271,18 @@ namespace SpeedyNtoNAssociatePlugin
             UpdateStartButton();
         }
 
+        private void chkDirectInsert_CheckedChanged(object sender, EventArgs e)
+        {
+            if (chkDirectInsert.Checked)
+                chkBypassPlugins.Checked = true;
+        }
+
+        private void chkBypassPlugins_CheckedChanged(object sender, EventArgs e)
+        {
+            if (!chkBypassPlugins.Checked)
+                chkDirectInsert.Checked = false;
+        }
+
         #region CSV Data Source
 
         private void btnBrowseCsv_Click(object sender, EventArgs e)
@@ -546,6 +558,8 @@ namespace SpeedyNtoNAssociatePlugin
             var verboseLogging = chkVerboseLog.Checked;
             var maxRetries = (int)nudRetries.Value;
             var batchSize = (int)nudBatchSize.Value;
+            var fireAndForget = chkFireAndForget.Checked;
+            var directInsert = chkDirectInsert.Checked;
 
             var resumeDir = Path.Combine(Path.GetTempPath(), "SpeedyNtoN");
             var resumePath = Path.Combine(resumeDir, $"resume_{relationship.SchemaName}.db");
@@ -635,9 +649,10 @@ namespace SpeedyNtoNAssociatePlugin
             _engine.ProgressUpdated += OnProgressUpdated;
             _engine.LogMessage += OnLogMessage;
 
-            AppendLog($"Starting association: relationship: {relationship.SchemaName}, parallelism: {parallelism}, batch size: {batchSize}");
+            AppendLog($"Starting association: relationship: {relationship.SchemaName}, parallelism: {parallelism}, batch size: {batchSize}, fire-and-forget: {fireAndForget}, direct insert: {directInsert}");
 
             var capturedResumeTracker = resumeTracker;
+            capturedResumeTracker.Configure(batchSize, parallelism);
 
             Task.Run(async () =>
             {
@@ -645,7 +660,7 @@ namespace SpeedyNtoNAssociatePlugin
                 {
                     await _engine.RunAsync(Service, pairsSource, relationship,
                         parallelism, capturedResumeTracker, bypassPlugins, verboseLogging,
-                        maxRetries, batchSize, _cts.Token);
+                        maxRetries, batchSize, fireAndForget, directInsert, _cts.Token);
                 }
                 catch (OperationCanceledException)
                 {

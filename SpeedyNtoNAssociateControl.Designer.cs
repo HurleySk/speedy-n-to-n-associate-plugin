@@ -495,7 +495,12 @@ namespace SpeedyNtoNAssociatePlugin
             this.grpSettings.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
             this.nudBatchSize = new System.Windows.Forms.NumericUpDown();
             this.lblBatchSize = new System.Windows.Forms.Label();
+            this.chkFireAndForget = new System.Windows.Forms.CheckBox();
+            this.chkDirectInsert = new System.Windows.Forms.CheckBox();
+            this.toolTip = new System.Windows.Forms.ToolTip();
             ((System.ComponentModel.ISupportInitialize)(this.nudBatchSize)).BeginInit();
+            this.grpSettings.Controls.Add(this.chkDirectInsert);
+            this.grpSettings.Controls.Add(this.chkFireAndForget);
             this.grpSettings.Controls.Add(this.nudBatchSize);
             this.grpSettings.Controls.Add(this.lblBatchSize);
             this.grpSettings.Controls.Add(this.chkVerboseLog);
@@ -506,7 +511,7 @@ namespace SpeedyNtoNAssociatePlugin
             this.grpSettings.Controls.Add(this.lblParallelism);
             this.grpSettings.Location = new System.Drawing.Point(12, 344);
             this.grpSettings.Name = "grpSettings";
-            this.grpSettings.Size = new System.Drawing.Size(776, 50);
+            this.grpSettings.Size = new System.Drawing.Size(776, 72);
             this.grpSettings.TabIndex = 3;
             this.grpSettings.TabStop = false;
             this.grpSettings.Text = "Settings";
@@ -560,6 +565,7 @@ namespace SpeedyNtoNAssociatePlugin
             this.chkBypassPlugins.TabIndex = 4;
             this.chkBypassPlugins.Text = "Bypass plugins/workflows";
             this.chkBypassPlugins.UseVisualStyleBackColor = true;
+            this.chkBypassPlugins.CheckedChanged += new System.EventHandler(this.chkBypassPlugins_CheckedChanged);
             //
             // chkVerboseLog
             //
@@ -592,6 +598,33 @@ namespace SpeedyNtoNAssociatePlugin
             this.nudBatchSize.TabIndex = 7;
             this.nudBatchSize.Value = new decimal(new int[] { 1, 0, 0, 0 });
             //
+            // chkFireAndForget
+            //
+            this.chkFireAndForget.AutoSize = true;
+            this.chkFireAndForget.Checked = true;
+            this.chkFireAndForget.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.chkFireAndForget.Location = new System.Drawing.Point(10, 46);
+            this.chkFireAndForget.Name = "chkFireAndForget";
+            this.chkFireAndForget.Size = new System.Drawing.Size(155, 17);
+            this.chkFireAndForget.TabIndex = 8;
+            this.chkFireAndForget.Text = "Skip per-item responses";
+            this.chkFireAndForget.UseVisualStyleBackColor = true;
+            this.toolTip.SetToolTip(this.chkFireAndForget, "Skips per-item response tracking for faster server processing.\nBatches assume success unless the entire call fails (transport error).\nOnly applies when Batch Size > 1.");
+            //
+            // chkDirectInsert
+            //
+            this.chkDirectInsert.AutoSize = true;
+            this.chkDirectInsert.Checked = true;
+            this.chkDirectInsert.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.chkDirectInsert.Location = new System.Drawing.Point(200, 46);
+            this.chkDirectInsert.Name = "chkDirectInsert";
+            this.chkDirectInsert.Size = new System.Drawing.Size(155, 17);
+            this.chkDirectInsert.TabIndex = 9;
+            this.chkDirectInsert.Text = "Direct intersect insert";
+            this.chkDirectInsert.UseVisualStyleBackColor = true;
+            this.chkDirectInsert.CheckedChanged += new System.EventHandler(this.chkDirectInsert_CheckedChanged);
+            this.toolTip.SetToolTip(this.chkDirectInsert, "Writes directly to the intersect table instead of using AssociateRequest.\nFaster but skips relationship validation. Requires Bypass Plugins.");
+            //
             // grpProgress
             //
             this.grpProgress.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
@@ -599,7 +632,7 @@ namespace SpeedyNtoNAssociatePlugin
             this.grpProgress.Controls.Add(this.lblDuplicates);
             this.grpProgress.Controls.Add(this.lblProgress);
             this.grpProgress.Controls.Add(this.progressBar);
-            this.grpProgress.Location = new System.Drawing.Point(12, 400);
+            this.grpProgress.Location = new System.Drawing.Point(12, 422);
             this.grpProgress.Name = "grpProgress";
             this.grpProgress.Size = new System.Drawing.Size(776, 68);
             this.grpProgress.TabIndex = 4;
@@ -646,7 +679,7 @@ namespace SpeedyNtoNAssociatePlugin
             this.btnStart.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
             this.btnStart.Enabled = false;
             this.btnStart.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold);
-            this.btnStart.Location = new System.Drawing.Point(12, 474);
+            this.btnStart.Location = new System.Drawing.Point(12, 496);
             this.btnStart.Name = "btnStart";
             this.btnStart.Size = new System.Drawing.Size(100, 30);
             this.btnStart.TabIndex = 5;
@@ -658,7 +691,7 @@ namespace SpeedyNtoNAssociatePlugin
             //
             this.btnStop.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
             this.btnStop.Enabled = false;
-            this.btnStop.Location = new System.Drawing.Point(118, 474);
+            this.btnStop.Location = new System.Drawing.Point(118, 496);
             this.btnStop.Name = "btnStop";
             this.btnStop.Size = new System.Drawing.Size(100, 30);
             this.btnStop.TabIndex = 6;
@@ -670,7 +703,7 @@ namespace SpeedyNtoNAssociatePlugin
             //
             this.txtLog.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
             this.txtLog.Font = new System.Drawing.Font("Consolas", 8.25F);
-            this.txtLog.Location = new System.Drawing.Point(12, 510);
+            this.txtLog.Location = new System.Drawing.Point(12, 532);
             this.txtLog.Multiline = true;
             this.txtLog.Name = "txtLog";
             this.txtLog.ReadOnly = true;
@@ -691,7 +724,7 @@ namespace SpeedyNtoNAssociatePlugin
             this.Controls.Add(this.grpRelationship);
             this.Controls.Add(this.lblStatus);
             this.Name = "SpeedyNtoNAssociateControl";
-            this.Size = new System.Drawing.Size(800, 620);
+            this.Size = new System.Drawing.Size(800, 642);
             this.Load += new System.EventHandler(this.SpeedyNtoNAssociateControl_Load);
             this.grpRelationship.ResumeLayout(false);
             this.grpRelationship.PerformLayout();
@@ -779,5 +812,8 @@ namespace SpeedyNtoNAssociatePlugin
         private System.Windows.Forms.TextBox txtLog;
         private System.Windows.Forms.NumericUpDown nudBatchSize;
         private System.Windows.Forms.Label lblBatchSize;
+        private System.Windows.Forms.CheckBox chkFireAndForget;
+        private System.Windows.Forms.CheckBox chkDirectInsert;
+        private System.Windows.Forms.ToolTip toolTip;
     }
 }
