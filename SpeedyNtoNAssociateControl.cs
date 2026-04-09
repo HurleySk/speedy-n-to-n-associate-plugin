@@ -602,19 +602,20 @@ namespace SpeedyNtoNAssociatePlugin
             string entity2Name = relationship.Entity2LogicalName;
 
             bool isCsvTab = tabDataSource.SelectedTab == tabCsv;
+            bool isFetchXmlTab = tabDataSource.SelectedTab == tabFetchXml;
             if (isCsvTab && !string.IsNullOrEmpty(_csvFilePath))
             {
                 pairsSource = _dataSourceService.StreamFromCsv(_csvFilePath);
                 AppendLog($"Streaming pairs from CSV: {_csvFilePath}");
             }
-            else if (!isCsvTab && !string.IsNullOrEmpty(_fetchXmlText))
+            else if (isFetchXmlTab && !string.IsNullOrEmpty(_fetchXmlText))
             {
                 pairsSource = _dataSourceService.StreamFromFetchXml(Service, _fetchXmlText, entity1Name, entity2Name);
                 AppendLog("Streaming pairs from FetchXML.");
             }
             else
             {
-                // Fallback to loaded pairs if no streaming source available
+                // SQL tab or fallback — use in-memory loaded pairs
                 pairsSource = _loadedPairs;
             }
 
