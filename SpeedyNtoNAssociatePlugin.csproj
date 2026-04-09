@@ -65,11 +65,11 @@
     <!-- Manually include DLL in Plugins folder without framework subfolder -->
     <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="Plugins\" />
 
-    <!-- SQLite dependencies -->
-    <None Include="$(OutputPath)\Microsoft.Data.Sqlite.dll" Pack="true" PackagePath="Plugins\" />
-    <None Include="$(OutputPath)\SQLitePCLRaw.batteries_v2.dll" Pack="true" PackagePath="Plugins\" />
-    <None Include="$(OutputPath)\SQLitePCLRaw.core.dll" Pack="true" PackagePath="Plugins\" />
-    <None Include="$(OutputPath)\SQLitePCLRaw.provider.dynamic_cdecl.dll" Pack="true" PackagePath="Plugins\" />
+    <!-- SQLite managed dependencies (subfolder to avoid XrmToolBox store version mismatch) -->
+    <None Include="$(OutputPath)\Microsoft.Data.Sqlite.dll" Pack="true" PackagePath="Plugins\Dependencies\" />
+    <None Include="$(OutputPath)\SQLitePCLRaw.batteries_v2.dll" Pack="true" PackagePath="Plugins\Dependencies\" />
+    <None Include="$(OutputPath)\SQLitePCLRaw.core.dll" Pack="true" PackagePath="Plugins\Dependencies\" />
+    <None Include="$(OutputPath)\SQLitePCLRaw.provider.dynamic_cdecl.dll" Pack="true" PackagePath="Plugins\Dependencies\" />
 
     <!-- SQLite native binaries -->
     <None Include="$(OutputPath)\runtimes\win-x64\native\e_sqlite3.dll" Pack="true" PackagePath="Plugins\runtimes\win-x64\native\" />
