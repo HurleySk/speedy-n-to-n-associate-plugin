@@ -9,10 +9,7 @@ namespace SpeedyNtoNAssociatePlugin.Services
 {
     public class SqlDataSourceService
     {
-        /// <summary>
-        /// Returns (pairs, skipped, diagnosticLog).
-        /// </summary>
-        public Tuple<List<AssociationPair>, int, string> LoadFromSql(
+        public DataSourceResult LoadFromSql(
             IOrganizationService service, string sqlQuery,
             string entity1LogicalName, string entity2LogicalName)
         {
@@ -58,7 +55,7 @@ namespace SpeedyNtoNAssociatePlugin.Services
                     "Please report this to the plugin developer.");
             }
 
-            return Tuple.Create(pairs, skipped, diagnosticLog);
+            return new DataSourceResult { Pairs = pairs, SkippedCount = skipped, DiagnosticLog = diagnosticLog };
         }
 
         private static string DescribeDataSet(DataSet ds)

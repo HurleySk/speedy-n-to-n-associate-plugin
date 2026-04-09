@@ -536,8 +536,8 @@ namespace SpeedyNtoNAssociatePlugin.Tests
                 "<fetch><entity name='contact'><attribute name='contactid'/></entity></fetch>",
                 null, null);
 
-            Assert(result.Item1.Count == 3, "3 pairs across 2 pages");
-            Assert(result.Item2 == 0, "No rows skipped");
+            Assert(result.Pairs.Count == 3, "3 pairs across 2 pages");
+            Assert(result.SkippedCount == 0, "No rows skipped");
             Assert(callCount == 2, "Pagination: RetrieveMultiple called exactly twice");
         }
 
@@ -576,11 +576,13 @@ namespace SpeedyNtoNAssociatePlugin.Tests
                 var logMessages = new List<string>();
                 engine.LogMessage += msg => logMessages.Add(msg);
 
-                engine.RunAsync(mock, pairs, relationship,
-                    degreeOfParallelism: 1, tracker, bypassPlugins: false,
-                    verboseLogging: false, maxRetries: 0, batchSize: 1,
-                    fireAndForget: false,
-                    CancellationToken.None).GetAwaiter().GetResult();
+                engine.RunAsync(mock, pairs, new AssociationRunOptions
+                    {
+                        Relationship = relationship,
+                        DegreeOfParallelism = 1,
+                        MaxRetries = 0,
+                        BatchSize = 1,
+                    }, tracker, CancellationToken.None).GetAwaiter().GetResult();
 
                 tracker.FlushBatch();
 
@@ -630,11 +632,13 @@ namespace SpeedyNtoNAssociatePlugin.Tests
                     lastDuplicates = duplicates;
                 };
 
-                engine.RunAsync(mock, pairs, relationship,
-                    degreeOfParallelism: 1, tracker, bypassPlugins: false,
-                    verboseLogging: false, maxRetries: 0, batchSize: 1,
-                    fireAndForget: false,
-                    CancellationToken.None).GetAwaiter().GetResult();
+                engine.RunAsync(mock, pairs, new AssociationRunOptions
+                    {
+                        Relationship = relationship,
+                        DegreeOfParallelism = 1,
+                        MaxRetries = 0,
+                        BatchSize = 1,
+                    }, tracker, CancellationToken.None).GetAwaiter().GetResult();
 
                 tracker.FlushBatch();
 
@@ -683,11 +687,13 @@ namespace SpeedyNtoNAssociatePlugin.Tests
                 bool cancelled = false;
                 try
                 {
-                    engine.RunAsync(mock, pairs, relationship,
-                        degreeOfParallelism: 1, tracker, bypassPlugins: false,
-                        verboseLogging: false, maxRetries: 0, batchSize: 1,
-                        fireAndForget: false,
-                        cts.Token).GetAwaiter().GetResult();
+                    engine.RunAsync(mock, pairs, new AssociationRunOptions
+                        {
+                            Relationship = relationship,
+                            DegreeOfParallelism = 1,
+                            MaxRetries = 0,
+                            BatchSize = 1,
+                        }, tracker, cts.Token).GetAwaiter().GetResult();
                 }
                 catch (OperationCanceledException)
                 {
@@ -738,11 +744,13 @@ namespace SpeedyNtoNAssociatePlugin.Tests
 
                 var engine = new AssociationEngine();
 
-                engine.RunAsync(mock, new[] { pair1, pair2, pair3 }, relationship,
-                    degreeOfParallelism: 1, tracker, bypassPlugins: false,
-                    verboseLogging: false, maxRetries: 0, batchSize: 1,
-                    fireAndForget: false,
-                    CancellationToken.None).GetAwaiter().GetResult();
+                engine.RunAsync(mock, new[] { pair1, pair2, pair3 }, new AssociationRunOptions
+                    {
+                        Relationship = relationship,
+                        DegreeOfParallelism = 1,
+                        MaxRetries = 0,
+                        BatchSize = 1,
+                    }, tracker, CancellationToken.None).GetAwaiter().GetResult();
 
                 tracker.FlushBatch();
 
@@ -814,11 +822,14 @@ namespace SpeedyNtoNAssociatePlugin.Tests
                 tracker.Open();
 
                 var engine = new AssociationEngine();
-                engine.RunAsync(mock, pairs, relationship,
-                    degreeOfParallelism: 1, tracker, bypassPlugins: false,
-                    verboseLogging: false, maxRetries: 0, batchSize: 5,
-                    fireAndForget: true,
-                    CancellationToken.None).GetAwaiter().GetResult();
+                engine.RunAsync(mock, pairs, new AssociationRunOptions
+                    {
+                        Relationship = relationship,
+                        DegreeOfParallelism = 1,
+                        MaxRetries = 0,
+                        BatchSize = 5,
+                        FireAndForget = true,
+                    }, tracker, CancellationToken.None).GetAwaiter().GetResult();
 
                 tracker.FlushBatch();
 
@@ -891,11 +902,13 @@ namespace SpeedyNtoNAssociatePlugin.Tests
                     lastDuplicates = duplicates;
                 };
 
-                engine.RunAsync(mock, pairs, relationship,
-                    degreeOfParallelism: 1, tracker, bypassPlugins: false,
-                    verboseLogging: false, maxRetries: 0, batchSize: 2,
-                    fireAndForget: false,
-                    CancellationToken.None).GetAwaiter().GetResult();
+                engine.RunAsync(mock, pairs, new AssociationRunOptions
+                    {
+                        Relationship = relationship,
+                        DegreeOfParallelism = 1,
+                        MaxRetries = 0,
+                        BatchSize = 2,
+                    }, tracker, CancellationToken.None).GetAwaiter().GetResult();
 
                 tracker.FlushBatch();
 

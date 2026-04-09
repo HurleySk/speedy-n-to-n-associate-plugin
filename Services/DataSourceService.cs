@@ -97,7 +97,7 @@ namespace SpeedyNtoNAssociatePlugin.Services
             return StreamFromCsv(filePath).ToList();
         }
 
-        public Tuple<List<AssociationPair>, int> LoadFromFetchXml(
+        public DataSourceResult LoadFromFetchXml(
             IOrganizationService service, string fetchXml,
             string entity1LogicalName, string entity2LogicalName)
         {
@@ -119,7 +119,7 @@ namespace SpeedyNtoNAssociatePlugin.Services
                 page++;
             }
 
-            return Tuple.Create(pairs, skipped);
+            return new DataSourceResult { Pairs = pairs, SkippedCount = skipped };
         }
 
         #endregion

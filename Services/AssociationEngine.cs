@@ -6,7 +6,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
+
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -27,21 +27,9 @@ namespace SpeedyNtoNAssociatePlugin.Services
         private const int MaxRetryDelayMs = 60000;
         private const int MaxThrottleBackoffMs = 30000;
         private const long ProgressUpdateIntervalMs = 100;
-        private const int MaxExceptionMessageLength = 200;
-
         private const string BypassLogicParam = "BypassBusinessLogicExecution";
         private const string BypassLogicValue = "CustomSync,CustomAsync";
         private const string SuppressCallbackParam = "SuppressCallbackRegistrationExpanderJob";
-        private const string DuplicateKeyError = "Cannot insert duplicate key";
-
-        private static readonly string[] TransientPatterns =
-        {
-            "429", "503", "502", "504",
-            "throttl", "server busy", "try again",
-            "timeout", "timed out", "task was canceled",
-            "connection was closed", "connection reset", "underlying connection",
-            "error occurred while sending", "socket", "network"
-        };
 
         private static readonly ThreadLocal<Random> Rng =
             new ThreadLocal<Random>(() => new Random());
@@ -60,17 +48,26 @@ namespace SpeedyNtoNAssociatePlugin.Services
             public int RoundRobin = -1;
         }
 
+        /// <summary>
+        /// Bundles runtime state passed between internal methods.
+        /// </summary>
+        private class RunContext
+        {
+            public IOrganizationService[] Clients;
+            public object[] ClientLocks;
+            public int PoolSize;
+            public CrmServiceClient PrimaryClient;
+            public ResumeTracker ResumeTracker;
+            public RunState State;
+            public Stopwatch Stopwatch;
+            public CancellationToken CancellationToken;
+        }
+
         public async Task RunAsync(
             IOrganizationService service,
             IEnumerable<AssociationPair> pairsSource,
-            RelationshipInfo relationship,
-            int degreeOfParallelism,
+            AssociationRunOptions options,
             ResumeTracker resumeTracker,
-            bool bypassPlugins,
-            bool verboseLogging,
-            int maxRetries,
-            int batchSize,
-            bool fireAndForget,
             CancellationToken cancellationToken)
         {
             var completedSet = resumeTracker.GetCompletedSet();
@@ -80,19 +77,24 @@ namespace SpeedyNtoNAssociatePlugin.Services
 
             TuneThreadPool();
 
-            var pool = InitializeClientPool(service, degreeOfParallelism);
-            var clients = pool.Item1;
-            var clientLocks = pool.Item2;
-            int poolSize = pool.Item3;
-            var primaryClient = service as CrmServiceClient;
+            var pool = InitializeClientPool(service, options.DegreeOfParallelism);
 
-            LogMessage?.Invoke($"Using {poolSize} pooled connections, parallelism: {degreeOfParallelism}, batch size: {batchSize}");
+            var ctx = new RunContext
+            {
+                Clients = pool.Item1,
+                ClientLocks = pool.Item2,
+                PoolSize = pool.Item3,
+                PrimaryClient = service as CrmServiceClient,
+                ResumeTracker = resumeTracker,
+                State = new RunState(),
+                Stopwatch = Stopwatch.StartNew(),
+                CancellationToken = cancellationToken
+            };
 
-            var state = new RunState();
-            var sw = Stopwatch.StartNew();
+            LogMessage?.Invoke($"Using {ctx.PoolSize} pooled connections, parallelism: {options.DegreeOfParallelism}, batch size: {options.BatchSize}");
 
             // Bounded buffer: holds enough items for all parallel workers to have full batches plus headroom
-            int bufferCapacity = Math.Max(batchSize * degreeOfParallelism * 2, 1000);
+            int bufferCapacity = Math.Max(options.BatchSize * options.DegreeOfParallelism * 2, 1000);
             using (var buffer = new BlockingCollection<AssociationPair>(bufferCapacity))
             {
                 // Producer: enumerate source, filter completed, feed into buffer
@@ -114,24 +116,19 @@ namespace SpeedyNtoNAssociatePlugin.Services
                     finally
                     {
                         buffer.CompleteAdding();
-                        state.TotalKnown = produced;
+                        ctx.State.TotalKnown = produced;
                         LogMessage?.Invoke($"Source enumeration complete. {produced:N0} pairs to process (after filtering {resumedCount:N0} already completed).");
                     }
                 }, cancellationToken);
 
                 // Consumer logic depends on batch size
-                if (batchSize <= 1)
+                if (options.BatchSize <= 1)
                 {
-                    await RunSingleMode(buffer, clients, clientLocks, poolSize, primaryClient,
-                        relationship, bypassPlugins, verboseLogging, maxRetries,
-                        resumeTracker, state, sw, degreeOfParallelism, cancellationToken);
+                    await RunSingleMode(buffer, options, ctx);
                 }
                 else
                 {
-                    await RunBatchMode(buffer, clients, clientLocks, poolSize, primaryClient,
-                        relationship, bypassPlugins, verboseLogging, maxRetries, batchSize,
-                        fireAndForget, resumeTracker,
-                        state, sw, degreeOfParallelism, cancellationToken);
+                    await RunBatchMode(buffer, options, ctx);
                 }
 
                 try { await producerTask; } catch (OperationCanceledException) { }
@@ -139,101 +136,97 @@ namespace SpeedyNtoNAssociatePlugin.Services
 
             resumeTracker.FlushBatch();
 
-            ProgressUpdated?.Invoke(state.Completed, state.Duplicates, state.Errors, state.TotalKnown);
-            DisposeClonedClients(clients);
+            ProgressUpdated?.Invoke(ctx.State.Completed, ctx.State.Duplicates, ctx.State.Errors, ctx.State.TotalKnown);
+            DisposeClonedClients(ctx.Clients);
 
-            var elapsed = sw.Elapsed;
-            var successCount = state.Completed - state.Duplicates - state.Errors;
-            var throughput = elapsed.TotalSeconds > 0 ? state.Completed / elapsed.TotalSeconds : 0;
-            LogMessage?.Invoke($"Complete. {successCount:N0} associated, {state.Duplicates:N0} duplicates skipped, {state.Errors:N0} errors. Elapsed: {elapsed:mm\\:ss}. Throughput: {throughput:F1} pairs/sec");
+            var elapsed = ctx.Stopwatch.Elapsed;
+            var successCount = ctx.State.Completed - ctx.State.Duplicates - ctx.State.Errors;
+            var throughput = elapsed.TotalSeconds > 0 ? ctx.State.Completed / elapsed.TotalSeconds : 0;
+            LogMessage?.Invoke($"Complete. {successCount:N0} associated, {ctx.State.Duplicates:N0} duplicates skipped, {ctx.State.Errors:N0} errors. Elapsed: {elapsed:mm\\:ss}. Throughput: {throughput:F1} pairs/sec");
         }
 
         #region Single-Request Mode (batchSize == 1)
 
         private async Task RunSingleMode(
             BlockingCollection<AssociationPair> buffer,
-            IOrganizationService[] clients, object[] clientLocks, int poolSize,
-            CrmServiceClient primaryClient, RelationshipInfo relationship,
-            bool bypassPlugins, bool verboseLogging, int maxRetries,
-            ResumeTracker resumeTracker, RunState state,
-            Stopwatch sw, int degreeOfParallelism, CancellationToken cancellationToken)
+            AssociationRunOptions options, RunContext ctx)
         {
-            using (var semaphore = new SemaphoreSlim(degreeOfParallelism))
+            using (var semaphore = new SemaphoreSlim(options.DegreeOfParallelism))
             {
             var tasks = new List<Task>();
-            int pruneThreshold = degreeOfParallelism * 10;
+            int pruneThreshold = options.DegreeOfParallelism * 10;
 
-            foreach (var pair in buffer.GetConsumingEnumerable(cancellationToken))
+            foreach (var pair in buffer.GetConsumingEnumerable(ctx.CancellationToken))
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                ctx.CancellationToken.ThrowIfCancellationRequested();
 
                 // Prune completed tasks to avoid unbounded memory growth at 1M+ scale
                 if (tasks.Count > pruneThreshold)
                     tasks.RemoveAll(t => t.IsCompleted);
 
-                await semaphore.WaitAsync(cancellationToken);
+                await semaphore.WaitAsync(ctx.CancellationToken);
 
                 var capturedPair = pair;
                 tasks.Add(Task.Run(async () =>
                 {
                     try
                     {
-                        var currentBackoff = Volatile.Read(ref state.ThrottleBackoffMs);
+                        var currentBackoff = Volatile.Read(ref ctx.State.ThrottleBackoffMs);
                         if (currentBackoff > 0)
-                            await Task.Delay(currentBackoff, cancellationToken);
+                            await Task.Delay(currentBackoff, ctx.CancellationToken);
 
-                        var clientIndex = (int)((uint)Interlocked.Increment(ref state.RoundRobin) % poolSize);
-                        var client = clients[clientIndex];
-                        var request = BuildAssociateRequest(capturedPair, relationship, bypassPlugins);
+                        var clientIndex = (int)((uint)Interlocked.Increment(ref ctx.State.RoundRobin) % ctx.PoolSize);
+                        var client = ctx.Clients[clientIndex];
+                        var request = BuildAssociateRequest(capturedPair, options.Relationship, options.BypassPlugins);
 
-                        for (int attempt = 0; attempt <= maxRetries; attempt++)
+                        for (int attempt = 0; attempt <= options.MaxRetries; attempt++)
                         {
                             try
                             {
                                 client.Execute(request);
-                                Interlocked.Increment(ref state.Completed);
-                                resumeTracker.TrackCompleted(capturedPair);
-                                DecayThrottleBackoff(ref state.ThrottleBackoffMs);
-                                if (verboseLogging)
+                                Interlocked.Increment(ref ctx.State.Completed);
+                                ctx.ResumeTracker.TrackCompleted(capturedPair);
+                                DecayThrottleBackoff(ref ctx.State.ThrottleBackoffMs);
+                                if (options.VerboseLogging)
                                     LogMessage?.Invoke($"OK: {capturedPair.Guid1} <-> {capturedPair.Guid2}");
                                 break;
                             }
-                            catch (Exception ex) when (IsDuplicateKeyError(ex))
+                            catch (Exception ex) when (ErrorClassifier.IsDuplicateKey(ex))
                             {
-                                Interlocked.Increment(ref state.Completed);
-                                Interlocked.Increment(ref state.Duplicates);
-                                resumeTracker.TrackCompleted(capturedPair);
-                                if (verboseLogging)
+                                Interlocked.Increment(ref ctx.State.Completed);
+                                Interlocked.Increment(ref ctx.State.Duplicates);
+                                ctx.ResumeTracker.TrackCompleted(capturedPair);
+                                if (options.VerboseLogging)
                                     LogMessage?.Invoke($"DUPLICATE: {capturedPair.Guid1} <-> {capturedPair.Guid2}");
                                 break;
                             }
-                            catch (Exception ex) when (attempt < maxRetries && IsTransient(ex))
+                            catch (Exception ex) when (attempt < options.MaxRetries && ErrorClassifier.IsTransient(ex))
                             {
                                 var delay = Math.Min(
                                     (int)(Math.Pow(2, attempt) * BackoffBaseMs) + Rng.Value.Next(BackoffJitterMs),
                                     MaxRetryDelayMs);
-                                Interlocked.Exchange(ref state.ThrottleBackoffMs, Math.Min(delay, MaxThrottleBackoffMs));
-                                LogMessage?.Invoke($"Retry {attempt + 1}/{maxRetries} in {delay / 1000}s: {capturedPair.Guid1} <-> {capturedPair.Guid2}: {GetExceptionSummary(ex)}");
-                                await Task.Delay(delay, cancellationToken);
+                                Interlocked.Exchange(ref ctx.State.ThrottleBackoffMs, Math.Min(delay, MaxThrottleBackoffMs));
+                                LogMessage?.Invoke($"Retry {attempt + 1}/{options.MaxRetries} in {delay / 1000}s: {capturedPair.Guid1} <-> {capturedPair.Guid2}: {ErrorClassifier.GetExceptionSummary(ex)}");
+                                await Task.Delay(delay, ctx.CancellationToken);
 
-                                client = TryReconnectClient(primaryClient, clients, clientLocks, clientIndex, client, ex);
+                                client = TryReconnectClient(ctx, clientIndex, client, ex);
                             }
                             catch (Exception ex)
                             {
-                                Interlocked.Increment(ref state.Completed);
-                                Interlocked.Increment(ref state.Errors);
-                                LogMessage?.Invoke($"FAILED after {attempt + 1} attempts: {capturedPair.Guid1} <-> {capturedPair.Guid2}: {GetExceptionSummary(ex)}");
+                                Interlocked.Increment(ref ctx.State.Completed);
+                                Interlocked.Increment(ref ctx.State.Errors);
+                                LogMessage?.Invoke($"FAILED after {attempt + 1} attempts: {capturedPair.Guid1} <-> {capturedPair.Guid2}: {ErrorClassifier.GetExceptionSummary(ex)}");
                                 break;
                             }
                         }
 
-                        TryFireProgressUpdate(sw, ref state.LastProgressUpdateMs, state.Completed, state.Duplicates, state.Errors, state.TotalKnown);
+                        TryFireProgressUpdate(ctx);
                     }
                     finally
                     {
                         semaphore.Release();
                     }
-                }, cancellationToken));
+                }, ctx.CancellationToken));
             }
 
             await Task.WhenAll(tasks);
@@ -246,71 +239,62 @@ namespace SpeedyNtoNAssociatePlugin.Services
 
         private async Task RunBatchMode(
             BlockingCollection<AssociationPair> buffer,
-            IOrganizationService[] clients, object[] clientLocks, int poolSize,
-            CrmServiceClient primaryClient, RelationshipInfo relationship,
-            bool bypassPlugins, bool verboseLogging, int maxRetries, int batchSize,
-            bool fireAndForget, ResumeTracker resumeTracker,
-            RunState state, Stopwatch sw,
-            int degreeOfParallelism, CancellationToken cancellationToken)
+            AssociationRunOptions options, RunContext ctx)
         {
-            using (var semaphore = new SemaphoreSlim(degreeOfParallelism))
+            using (var semaphore = new SemaphoreSlim(options.DegreeOfParallelism))
             {
             var tasks = new List<Task>();
-            int pruneThreshold = degreeOfParallelism * 10;
+            int pruneThreshold = options.DegreeOfParallelism * 10;
 
-            var currentBatch = new List<AssociationPair>(batchSize);
+            var currentBatch = new List<AssociationPair>(options.BatchSize);
 
-            foreach (var pair in buffer.GetConsumingEnumerable(cancellationToken))
+            foreach (var pair in buffer.GetConsumingEnumerable(ctx.CancellationToken))
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                ctx.CancellationToken.ThrowIfCancellationRequested();
                 currentBatch.Add(pair);
 
-                if (currentBatch.Count >= batchSize)
+                if (currentBatch.Count >= options.BatchSize)
                 {
                     var batchToProcess = currentBatch;
-                    currentBatch = new List<AssociationPair>(batchSize);
+                    currentBatch = new List<AssociationPair>(options.BatchSize);
 
                     // Prune completed tasks to avoid unbounded memory growth
                     if (tasks.Count > pruneThreshold)
                         tasks.RemoveAll(t => t.IsCompleted);
 
-                    await semaphore.WaitAsync(cancellationToken);
+                    await semaphore.WaitAsync(ctx.CancellationToken);
                     tasks.Add(Task.Run(async () =>
                     {
                         try
                         {
-                            await ProcessBatch(batchToProcess, clients, clientLocks, poolSize,
-                                primaryClient, relationship, bypassPlugins, verboseLogging, maxRetries,
-                                fireAndForget, resumeTracker, state, cancellationToken);
-                            TryFireProgressUpdate(sw, ref state.LastProgressUpdateMs, state.Completed, state.Duplicates, state.Errors, state.TotalKnown);
+                            await ProcessBatch(batchToProcess, options, ctx);
+                            TryFireProgressUpdate(ctx);
                         }
                         finally
                         {
                             semaphore.Release();
                         }
-                    }, cancellationToken));
+                    }, ctx.CancellationToken));
                 }
             }
 
             // Process remaining items in the last partial batch
             if (currentBatch.Count > 0)
             {
-                await semaphore.WaitAsync(cancellationToken);
+                await semaphore.WaitAsync(ctx.CancellationToken);
                 var finalBatch = currentBatch;
                 tasks.Add(Task.Run(async () =>
                 {
                     try
                     {
-                        await ProcessBatch(finalBatch, clients, clientLocks, poolSize,
-                            primaryClient, relationship, bypassPlugins, verboseLogging, maxRetries,
-                            fireAndForget, resumeTracker, state, cancellationToken);
-                        TryFireProgressUpdate(sw, ref state.LastProgressUpdateMs, state.Completed, state.Duplicates, state.Errors, state.TotalKnown);
+                        await ProcessBatch(finalBatch, options, ctx);
+                        TryFireProgressUpdate(ctx);
                     }
                     finally
                     {
                         semaphore.Release();
                     }
-                }, cancellationToken));
+                }, ctx.CancellationToken));
             }
 
             await Task.WhenAll(tasks);
@@ -319,41 +303,36 @@ namespace SpeedyNtoNAssociatePlugin.Services
 
         private async Task ProcessBatch(
             List<AssociationPair> batch,
-            IOrganizationService[] clients, object[] clientLocks, int poolSize,
-            CrmServiceClient primaryClient, RelationshipInfo relationship,
-            bool bypassPlugins, bool verboseLogging, int maxRetries,
-            bool fireAndForget,
-            ResumeTracker resumeTracker, RunState state,
-            CancellationToken cancellationToken)
+            AssociationRunOptions options, RunContext ctx)
         {
-            var currentBackoff = Volatile.Read(ref state.ThrottleBackoffMs);
+            var currentBackoff = Volatile.Read(ref ctx.State.ThrottleBackoffMs);
             if (currentBackoff > 0)
-                await Task.Delay(currentBackoff, cancellationToken);
+                await Task.Delay(currentBackoff, ctx.CancellationToken);
 
-            var clientIndex = (int)((uint)Interlocked.Increment(ref state.RoundRobin) % poolSize);
-            var client = clients[clientIndex];
+            var clientIndex = (int)((uint)Interlocked.Increment(ref ctx.State.RoundRobin) % ctx.PoolSize);
+            var client = ctx.Clients[clientIndex];
 
             var pendingPairs = new List<AssociationPair>(batch);
 
-            for (int attempt = 0; attempt <= maxRetries && pendingPairs.Count > 0; attempt++)
+            for (int attempt = 0; attempt <= options.MaxRetries && pendingPairs.Count > 0; attempt++)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                ctx.CancellationToken.ThrowIfCancellationRequested();
 
-                var multiRequest = BuildExecuteMultipleBatch(pendingPairs, relationship, bypassPlugins, fireAndForget);
+                var multiRequest = BuildExecuteMultipleBatch(pendingPairs, options.Relationship, options.BypassPlugins, options.FireAndForget);
 
                 try
                 {
                     var response = (ExecuteMultipleResponse)client.Execute(multiRequest);
 
-                    if (fireAndForget)
+                    if (options.FireAndForget)
                     {
                         // No per-item responses — treat entire batch as succeeded
                         foreach (var pair in pendingPairs)
                         {
-                            Interlocked.Increment(ref state.Completed);
-                            resumeTracker.TrackCompleted(pair);
+                            Interlocked.Increment(ref ctx.State.Completed);
+                            ctx.ResumeTracker.TrackCompleted(pair);
                         }
-                        DecayThrottleBackoff(ref state.ThrottleBackoffMs);
+                        DecayThrottleBackoff(ref ctx.State.ThrottleBackoffMs);
                         break;
                     }
 
@@ -371,31 +350,31 @@ namespace SpeedyNtoNAssociatePlugin.Services
 
                         if (itemResponse == null || itemResponse.Fault == null)
                         {
-                            Interlocked.Increment(ref state.Completed);
-                            resumeTracker.TrackCompleted(pair);
-                            DecayThrottleBackoff(ref state.ThrottleBackoffMs);
-                            if (verboseLogging)
+                            Interlocked.Increment(ref ctx.State.Completed);
+                            ctx.ResumeTracker.TrackCompleted(pair);
+                            DecayThrottleBackoff(ref ctx.State.ThrottleBackoffMs);
+                            if (options.VerboseLogging)
                                 LogMessage?.Invoke($"OK: {pair.Guid1} <-> {pair.Guid2}");
                         }
-                        else if (IsDuplicateKeyFault(itemResponse.Fault))
+                        else if (ErrorClassifier.IsDuplicateKeyFault(itemResponse.Fault))
                         {
-                            Interlocked.Increment(ref state.Completed);
-                            Interlocked.Increment(ref state.Duplicates);
-                            resumeTracker.TrackCompleted(pair);
-                            if (verboseLogging)
+                            Interlocked.Increment(ref ctx.State.Completed);
+                            Interlocked.Increment(ref ctx.State.Duplicates);
+                            ctx.ResumeTracker.TrackCompleted(pair);
+                            if (options.VerboseLogging)
                                 LogMessage?.Invoke($"DUPLICATE: {pair.Guid1} <-> {pair.Guid2}");
                         }
-                        else if (attempt < maxRetries && IsTransientFault(itemResponse.Fault))
+                        else if (attempt < options.MaxRetries && ErrorClassifier.IsTransientFault(itemResponse.Fault))
                         {
                             retryList.Add(pair);
                         }
                         else
                         {
-                            Interlocked.Increment(ref state.Completed);
-                            Interlocked.Increment(ref state.Errors);
+                            Interlocked.Increment(ref ctx.State.Completed);
+                            Interlocked.Increment(ref ctx.State.Errors);
                             var msg = itemResponse.Fault.Message ?? "Unknown error";
-                            if (msg.Length > MaxExceptionMessageLength)
-                                msg = msg.Substring(0, MaxExceptionMessageLength) + "...";
+                            if (msg.Length > 200)
+                                msg = msg.Substring(0, 200) + "...";
                             LogMessage?.Invoke($"FAILED: {pair.Guid1} <-> {pair.Guid2}: {msg}");
                         }
                     }
@@ -406,31 +385,31 @@ namespace SpeedyNtoNAssociatePlugin.Services
                     var delay = Math.Min(
                         (int)(Math.Pow(2, attempt) * BackoffBaseMs) + Rng.Value.Next(BackoffJitterMs),
                         MaxRetryDelayMs);
-                    Interlocked.Exchange(ref state.ThrottleBackoffMs, Math.Min(delay, MaxThrottleBackoffMs));
-                    LogMessage?.Invoke($"Batch retry {attempt + 1}/{maxRetries}: {retryList.Count} transient failures, backoff {delay / 1000}s");
-                    await Task.Delay(delay, cancellationToken);
+                    Interlocked.Exchange(ref ctx.State.ThrottleBackoffMs, Math.Min(delay, MaxThrottleBackoffMs));
+                    LogMessage?.Invoke($"Batch retry {attempt + 1}/{options.MaxRetries}: {retryList.Count} transient failures, backoff {delay / 1000}s");
+                    await Task.Delay(delay, ctx.CancellationToken);
 
                     pendingPairs = retryList;
                 }
-                catch (Exception ex) when (attempt < maxRetries && IsTransient(ex))
+                catch (Exception ex) when (attempt < options.MaxRetries && ErrorClassifier.IsTransient(ex))
                 {
                     var delay = Math.Min(
                         (int)(Math.Pow(2, attempt) * BackoffBaseMs) + Rng.Value.Next(BackoffJitterMs),
                         MaxRetryDelayMs);
-                    Interlocked.Exchange(ref state.ThrottleBackoffMs, Math.Min(delay, MaxThrottleBackoffMs));
-                    LogMessage?.Invoke($"Batch call failed (transient), retry {attempt + 1}/{maxRetries} in {delay / 1000}s: {GetExceptionSummary(ex)}");
-                    await Task.Delay(delay, cancellationToken);
+                    Interlocked.Exchange(ref ctx.State.ThrottleBackoffMs, Math.Min(delay, MaxThrottleBackoffMs));
+                    LogMessage?.Invoke($"Batch call failed (transient), retry {attempt + 1}/{options.MaxRetries} in {delay / 1000}s: {ErrorClassifier.GetExceptionSummary(ex)}");
+                    await Task.Delay(delay, ctx.CancellationToken);
 
-                    client = TryReconnectClient(primaryClient, clients, clientLocks, clientIndex, client, ex);
+                    client = TryReconnectClient(ctx, clientIndex, client, ex);
                 }
                 catch (Exception ex)
                 {
                     foreach (var pair in pendingPairs)
                     {
-                        Interlocked.Increment(ref state.Completed);
-                        Interlocked.Increment(ref state.Errors);
+                        Interlocked.Increment(ref ctx.State.Completed);
+                        Interlocked.Increment(ref ctx.State.Errors);
                     }
-                    LogMessage?.Invoke($"Batch FAILED permanently ({pendingPairs.Count} pairs): {GetExceptionSummary(ex)}");
+                    LogMessage?.Invoke($"Batch FAILED permanently ({pendingPairs.Count} pairs): {ErrorClassifier.GetExceptionSummary(ex)}");
                     break;
                 }
             }
@@ -456,20 +435,6 @@ namespace SpeedyNtoNAssociatePlugin.Services
             }
 
             return multiRequest;
-        }
-
-        private static bool IsDuplicateKeyFault(OrganizationServiceFault fault)
-        {
-            if (fault == null) return false;
-            var msg = fault.Message ?? "";
-            return msg.IndexOf(DuplicateKeyError, StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        private static bool IsTransientFault(OrganizationServiceFault fault)
-        {
-            if (fault == null) return false;
-            var msg = fault.Message ?? "";
-            return TransientPatterns.Any(p => msg.IndexOf(p, StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         #endregion
@@ -565,25 +530,24 @@ namespace SpeedyNtoNAssociatePlugin.Services
         }
 
         private IOrganizationService TryReconnectClient(
-            CrmServiceClient primaryClient, IOrganizationService[] clients,
-            object[] clientLocks, int clientIndex, IOrganizationService currentClient, Exception ex)
+            RunContext ctx, int clientIndex, IOrganizationService currentClient, Exception ex)
         {
-            if (!IsConnectionError(ex) || primaryClient == null || clientIndex == 0)
+            if (!ErrorClassifier.IsConnectionError(ex) || ctx.PrimaryClient == null || clientIndex == 0)
                 return currentClient;
 
             try
             {
-                lock (clientLocks[clientIndex])
+                lock (ctx.ClientLocks[clientIndex])
                 {
-                    if (clients[clientIndex] == currentClient)
+                    if (ctx.Clients[clientIndex] == currentClient)
                     {
-                        var newClone = primaryClient.Clone();
+                        var newClone = ctx.PrimaryClient.Clone();
                         newClone.EnableAffinityCookie = false;
                         (currentClient as IDisposable)?.Dispose();
-                        clients[clientIndex] = newClone;
+                        ctx.Clients[clientIndex] = newClone;
                     }
                     LogMessage?.Invoke($"Reconnected client {clientIndex}.");
-                    return clients[clientIndex];
+                    return ctx.Clients[clientIndex];
                 }
             }
             catch
@@ -592,14 +556,13 @@ namespace SpeedyNtoNAssociatePlugin.Services
             }
         }
 
-        private void TryFireProgressUpdate(Stopwatch sw, ref long lastProgressUpdateMs,
-            int completed, int duplicates, int errors, int? total)
+        private void TryFireProgressUpdate(RunContext ctx)
         {
-            var now = sw.ElapsedMilliseconds;
-            if (now - Interlocked.Read(ref lastProgressUpdateMs) > ProgressUpdateIntervalMs || (total.HasValue && completed == total.Value))
+            var now = ctx.Stopwatch.ElapsedMilliseconds;
+            if (now - Interlocked.Read(ref ctx.State.LastProgressUpdateMs) > ProgressUpdateIntervalMs || (ctx.State.TotalKnown.HasValue && ctx.State.Completed == ctx.State.TotalKnown.Value))
             {
-                Interlocked.Exchange(ref lastProgressUpdateMs, now);
-                ProgressUpdated?.Invoke(completed, duplicates, errors, total);
+                Interlocked.Exchange(ref ctx.State.LastProgressUpdateMs, now);
+                ProgressUpdated?.Invoke(ctx.State.Completed, ctx.State.Duplicates, ctx.State.Errors, ctx.State.TotalKnown);
             }
         }
 
@@ -610,43 +573,6 @@ namespace SpeedyNtoNAssociatePlugin.Services
                 try { (clients[i] as IDisposable)?.Dispose(); }
                 catch { /* best effort */ }
             }
-        }
-
-        #endregion
-
-        #region Error Classification
-
-        private static string GetExceptionSummary(Exception ex)
-        {
-            var msg = ex.Message;
-            return msg.Length > MaxExceptionMessageLength
-                ? msg.Substring(0, MaxExceptionMessageLength) + "..."
-                : msg;
-        }
-
-        private static bool IsTransient(Exception ex)
-        {
-            return IsTransientMessage(ex.Message) ||
-                   (ex.InnerException != null && IsTransientMessage(ex.InnerException.Message));
-        }
-
-        private static bool IsTransientMessage(string msg)
-        {
-            return !string.IsNullOrEmpty(msg) &&
-                   TransientPatterns.Any(p => msg.IndexOf(p, StringComparison.OrdinalIgnoreCase) >= 0);
-        }
-
-        private static bool IsConnectionError(Exception ex)
-        {
-            var msg = ex.Message + (ex.InnerException?.Message ?? "");
-            return msg.IndexOf("connection", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                   msg.IndexOf("socket", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                   msg.IndexOf("underlying", StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        private static bool IsDuplicateKeyError(Exception ex)
-        {
-            return ex.Message.IndexOf(DuplicateKeyError, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         #endregion

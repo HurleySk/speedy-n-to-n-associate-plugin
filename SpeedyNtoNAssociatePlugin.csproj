@@ -13,7 +13,7 @@
     <AssemblyName>SpeedyNtoNAssociatePlugin</AssemblyName>
     <RootNamespace>SpeedyNtoNAssociatePlugin</RootNamespace>
     <Title>Speedy N:N Associate</Title>
-    <Version>1.0.0.0</Version>
+    <Version>1.0.1.0</Version>
     <Authors>Samuel Hurley</Authors>
     <Company>Samuel Hurley</Company>
     <Copyright>Copyright (c) Samuel Hurley 2026</Copyright>
@@ -30,7 +30,7 @@
     <PackageIcon>icon-128.png</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>XrmToolBox;Dynamics365;Dataverse;PowerPlatform</PackageTags>
-    <PackageReleaseNotes>Initial release</PackageReleaseNotes>
+    <PackageReleaseNotes>Extract parameter objects (AssociationRunOptions), error classifier, syntax highlighter, and shared result types for improved maintainability</PackageReleaseNotes>
     <RepositoryUrl>https://github.com/HurleySk/speedy-n-to-n-associate-plugin</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

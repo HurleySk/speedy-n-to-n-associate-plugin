@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
+
 using System.Xml.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,34 +22,7 @@ namespace SpeedyNtoNAssociatePlugin
         private readonly DataSourceService _dataSourceService = new DataSourceService();
         private readonly SqlDataSourceService _sqlDataSourceService = new SqlDataSourceService();
         private readonly AssociationEngine _engine = new AssociationEngine();
-
-        // XML syntax highlighting
-        private static readonly Regex XmlPunctuationRegex = new Regex(@"[<>/=]", RegexOptions.Compiled);
-        private static readonly Regex XmlTagRegex = new Regex(@"(?<=</?)\w[\w\-]*", RegexOptions.Compiled);
-        private static readonly Regex XmlAttributeRegex = new Regex(@"\b(\w[\w\-]*)(?=\s*=)", RegexOptions.Compiled);
-        private static readonly Regex XmlValueRegex = new Regex("\"[^\"]*\"", RegexOptions.Compiled);
-
-        private static readonly Color XmlDefaultColor = Color.Black;
-        private static readonly Color XmlPunctuationColor = Color.Gray;
-        private static readonly Color XmlTagColor = Color.Blue;
-        private static readonly Color XmlAttributeColor = Color.FromArgb(163, 21, 21);
-        private static readonly Color XmlValueColor = Color.Red;
-
-        // SQL syntax highlighting
-        private static readonly Regex SqlKeywordRegex = new Regex(
-            @"\b(SELECT|FROM|WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|CROSS|ON|AND|OR|NOT|IN|EXISTS|BETWEEN|LIKE|IS|NULL|AS|DISTINCT|TOP|ORDER|BY|GROUP|HAVING|UNION|ALL|CASE|WHEN|THEN|ELSE|END|CAST|CONVERT|COUNT|SUM|AVG|MIN|MAX|COALESCE|ISNULL)\b",
-            RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex SqlStringRegex = new Regex(@"'[^']*'", RegexOptions.Compiled);
-        private static readonly Regex SqlNumberRegex = new Regex(@"\b\d+(\.\d+)?\b", RegexOptions.Compiled);
-        private static readonly Regex SqlCommentRegex = new Regex(@"--[^\r\n]*", RegexOptions.Compiled);
-        private static readonly Regex SqlOperatorRegex = new Regex(@"[=<>!]+|[,;().]", RegexOptions.Compiled);
-
-        private static readonly Color SqlDefaultColor = Color.Black;
-        private static readonly Color SqlKeywordColor = Color.Blue;
-        private static readonly Color SqlStringColor = Color.FromArgb(163, 21, 21);
-        private static readonly Color SqlNumberColor = Color.DarkCyan;
-        private static readonly Color SqlCommentColor = Color.Green;
-        private static readonly Color SqlOperatorColor = Color.Gray;
+        private readonly SyntaxHighlighter _highlighter = new SyntaxHighlighter();
 
         private List<AssociationPair> _loadedPairs;
         private string _csvFilePath;
@@ -68,9 +41,9 @@ namespace SpeedyNtoNAssociatePlugin
         {
             InitializeComponent();
             _colorizeTimer = new System.Windows.Forms.Timer { Interval = 300 };
-            _colorizeTimer.Tick += (s, e) => { _colorizeTimer.Stop(); FormatAndColorize(); };
+            _colorizeTimer.Tick += (s, e) => { _colorizeTimer.Stop(); _highlighter.FormatAndColorizeXml(txtFetchXml, ref _suppressColorize); };
             _sqlColorizeTimer = new System.Windows.Forms.Timer { Interval = 300 };
-            _sqlColorizeTimer.Tick += (s, e) => { _sqlColorizeTimer.Stop(); ColorizeSql(); };
+            _sqlColorizeTimer.Tick += (s, e) => { _sqlColorizeTimer.Stop(); _highlighter.ColorizeSql(txtSqlQuery, ref _suppressSqlColorize); };
         }
 
         private void SpeedyNtoNAssociateControl_Load(object sender, EventArgs e)
@@ -308,29 +281,9 @@ namespace SpeedyNtoNAssociatePlugin
         private void txtFetchXml_TextChanged(object sender, EventArgs e)
         {
             if (_suppressColorize) return;
-            StripIncomingFormatting(txtFetchXml, ref _suppressColorize);
+            SyntaxHighlighter.StripIncomingFormatting(txtFetchXml, ref _suppressColorize);
             _colorizeTimer.Stop();
             _colorizeTimer.Start();
-        }
-
-        private void FormatAndColorize()
-        {
-            var xml = txtFetchXml.Text.Trim();
-            if (string.IsNullOrEmpty(xml)) return;
-
-            try
-            {
-                var doc = XDocument.Parse(xml);
-                _suppressColorize = true;
-                txtFetchXml.Text = doc.ToString();
-                _suppressColorize = false;
-                ColorizeXml();
-            }
-            catch
-            {
-                // If XML is invalid, just colorize what's there
-                ColorizeXml();
-            }
         }
 
         private void btnFormatXml_Click(object sender, EventArgs e)
@@ -349,7 +302,7 @@ namespace SpeedyNtoNAssociatePlugin
                 _suppressColorize = true;
                 txtFetchXml.Text = doc.ToString();
                 _suppressColorize = false;
-                ColorizeXml();
+                _highlighter.ColorizeXml(txtFetchXml, ref _suppressColorize);
                 MessageBox.Show("FetchXML is valid.", "Validation",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 AppendLog("FetchXML validated successfully.");
@@ -359,17 +312,6 @@ namespace SpeedyNtoNAssociatePlugin
                 MessageBox.Show($"Invalid XML at line {ex.LineNumber}, position {ex.LinePosition}:\n\n{ex.Message}",
                     "XML Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-        }
-
-        private void ColorizeXml()
-        {
-            ColorizeRichTextBox(txtFetchXml, XmlDefaultColor, new (Regex, Func<Match, int>, Func<Match, int>, Color)[]
-            {
-                (XmlPunctuationRegex, m => m.Index, m => m.Length, XmlPunctuationColor),
-                (XmlTagRegex, m => m.Index, m => m.Length, XmlTagColor),
-                (XmlAttributeRegex, m => m.Groups[1].Index, m => m.Groups[1].Length, XmlAttributeColor),
-                (XmlValueRegex, m => m.Index, m => m.Length, XmlValueColor),
-            }, ref _suppressColorize);
         }
 
         private void btnPreviewFetchXml_Click(object sender, EventArgs e)
@@ -415,19 +357,12 @@ namespace SpeedyNtoNAssociatePlugin
                         return;
                     }
 
-                    var fetchResult = (Tuple<List<AssociationPair>, int>)args.Result;
-                    _loadedPairs = fetchResult.Item1;
+                    var fetchResult = (DataSourceResult)args.Result;
                     _fetchXmlText = fetchXml;
-                    var skipped = fetchResult.Item2;
+                    HandlePreviewResult(fetchResult, dgvFetchPreview, lblFetchXmlCount, "FetchXML", splitFetch);
 
-                    PopulatePreview(dgvFetchPreview, lblFetchXmlCount, _loadedPairs, skipped, "FetchXML");
-                    splitFetch.Panel2Collapsed = _loadedPairs.Count == 0;
-
-                    if (skipped > 0)
-                        AppendLog($"Skipped {skipped:N0} rows -- GUIDs did not match {entity1Name} or {entity2Name}.");
-
-                    UpdateStartButton();
-                    PreFillProgress(_loadedPairs.Count);
+                    if (fetchResult.SkippedCount > 0)
+                        AppendLog($"Skipped {fetchResult.SkippedCount:N0} rows -- GUIDs did not match {entity1Name} or {entity2Name}.");
                 }
             });
         }
@@ -439,21 +374,9 @@ namespace SpeedyNtoNAssociatePlugin
         private void txtSqlQuery_TextChanged(object sender, EventArgs e)
         {
             if (_suppressSqlColorize) return;
-            StripIncomingFormatting(txtSqlQuery, ref _suppressSqlColorize);
+            SyntaxHighlighter.StripIncomingFormatting(txtSqlQuery, ref _suppressSqlColorize);
             _sqlColorizeTimer.Stop();
             _sqlColorizeTimer.Start();
-        }
-
-        private void ColorizeSql()
-        {
-            ColorizeRichTextBox(txtSqlQuery, SqlDefaultColor, new (Regex, Func<Match, int>, Func<Match, int>, Color)[]
-            {
-                (SqlOperatorRegex, m => m.Index, m => m.Length, SqlOperatorColor),
-                (SqlKeywordRegex, m => m.Index, m => m.Length, SqlKeywordColor),
-                (SqlNumberRegex, m => m.Index, m => m.Length, SqlNumberColor),
-                (SqlStringRegex, m => m.Index, m => m.Length, SqlStringColor),
-                (SqlCommentRegex, m => m.Index, m => m.Length, SqlCommentColor),
-            }, ref _suppressSqlColorize);
         }
 
         private void btnPreviewSql_Click(object sender, EventArgs e)
@@ -498,19 +421,12 @@ namespace SpeedyNtoNAssociatePlugin
                         return;
                     }
 
-                    var sqlResult = (Tuple<List<AssociationPair>, int, string>)args.Result;
-                    _loadedPairs = sqlResult.Item1;
-                    var skipped = sqlResult.Item2;
-                    var diagnosticLog = sqlResult.Item3;
+                    var sqlResult = (DataSourceResult)args.Result;
 
-                    if (!string.IsNullOrEmpty(diagnosticLog))
-                        AppendLog($"SQL response: {diagnosticLog}");
+                    if (!string.IsNullOrEmpty(sqlResult.DiagnosticLog))
+                        AppendLog($"SQL response: {sqlResult.DiagnosticLog}");
 
-                    PopulatePreview(dgvSqlPreview, lblSqlCount, _loadedPairs, skipped, "SQL");
-                    splitSql.Panel2Collapsed = _loadedPairs.Count == 0;
-
-                    UpdateStartButton();
-                    PreFillProgress(_loadedPairs.Count);
+                    HandlePreviewResult(sqlResult, dgvSqlPreview, lblSqlCount, "SQL", splitSql);
                 }
             });
         }
@@ -540,16 +456,19 @@ namespace SpeedyNtoNAssociatePlugin
                 return;
             }
 
-            var relationship = (RelationshipInfo)cmbRelationship.SelectedItem;
-            var parallelism = (int)nudParallelism.Value;
-            var bypassPlugins = chkBypassPlugins.Checked;
-            var verboseLogging = chkVerboseLog.Checked;
-            var maxRetries = (int)nudRetries.Value;
-            var batchSize = (int)nudBatchSize.Value;
-            var fireAndForget = chkFireAndForget.Checked;
+            var options = new AssociationRunOptions
+            {
+                Relationship = (RelationshipInfo)cmbRelationship.SelectedItem,
+                DegreeOfParallelism = (int)nudParallelism.Value,
+                BypassPlugins = chkBypassPlugins.Checked,
+                VerboseLogging = chkVerboseLog.Checked,
+                MaxRetries = (int)nudRetries.Value,
+                BatchSize = (int)nudBatchSize.Value,
+                FireAndForget = chkFireAndForget.Checked
+            };
 
             var resumeDir = Path.Combine(Path.GetTempPath(), "SpeedyNtoN");
-            var resumePath = Path.Combine(resumeDir, $"resume_{relationship.SchemaName}.db");
+            var resumePath = Path.Combine(resumeDir, $"resume_{options.Relationship.SchemaName}.db");
 
             // Check for existing resume database
             var resumeTracker = new ResumeTracker(resumePath);
@@ -563,7 +482,7 @@ namespace SpeedyNtoNAssociatePlugin
                 if (completedCount > 0)
                 {
                     var result = MessageBox.Show(
-                        $"A previous run for '{relationship.SchemaName}' has {completedCount:N0} completed pairs tracked.\n\n" +
+                        $"A previous run for '{options.Relationship.SchemaName}' has {completedCount:N0} completed pairs tracked.\n\n" +
                         "Yes = Resume (skip completed pairs)\n" +
                         "No = Start fresh (clear history)\n" +
                         "Cancel = Abort",
@@ -598,8 +517,8 @@ namespace SpeedyNtoNAssociatePlugin
 
             // Build streaming data source
             IEnumerable<AssociationPair> pairsSource;
-            string entity1Name = relationship.Entity1LogicalName;
-            string entity2Name = relationship.Entity2LogicalName;
+            string entity1Name = options.Relationship.Entity1LogicalName;
+            string entity2Name = options.Relationship.Entity2LogicalName;
 
             bool isCsvTab = tabDataSource.SelectedTab == tabCsv;
             bool isFetchXmlTab = tabDataSource.SelectedTab == tabFetchXml;
@@ -637,18 +556,17 @@ namespace SpeedyNtoNAssociatePlugin
             _engine.ProgressUpdated += OnProgressUpdated;
             _engine.LogMessage += OnLogMessage;
 
-            AppendLog($"Starting association: relationship: {relationship.SchemaName}, parallelism: {parallelism}, batch size: {batchSize}, fire-and-forget: {fireAndForget}");
+            AppendLog($"Starting association: relationship: {options.Relationship.SchemaName}, parallelism: {options.DegreeOfParallelism}, batch size: {options.BatchSize}, fire-and-forget: {options.FireAndForget}");
 
             var capturedResumeTracker = resumeTracker;
-            capturedResumeTracker.Configure(batchSize, parallelism);
+            capturedResumeTracker.Configure(options.BatchSize, options.DegreeOfParallelism);
 
             Task.Run(async () =>
             {
                 try
                 {
-                    await _engine.RunAsync(Service, pairsSource, relationship,
-                        parallelism, capturedResumeTracker, bypassPlugins, verboseLogging,
-                        maxRetries, batchSize, fireAndForget, _cts.Token);
+                    await _engine.RunAsync(Service, pairsSource, options,
+                        capturedResumeTracker, _cts.Token);
                 }
                 catch (OperationCanceledException)
                 {
@@ -739,48 +657,14 @@ namespace SpeedyNtoNAssociatePlugin
                                cmbRelationship.SelectedItem != null;
         }
 
-        private static void ColorizeRichTextBox(RichTextBox rtb, Color defaultColor,
-            (Regex regex, Func<Match, int> getIndex, Func<Match, int> getLength, Color color)[] rules,
-            ref bool suppressFlag)
+        private void HandlePreviewResult(DataSourceResult result, DataGridView dgv,
+            System.Windows.Forms.Label countLabel, string sourceName, SplitContainer split)
         {
-            var text = rtb.Text;
-            if (string.IsNullOrWhiteSpace(text)) return;
-
-            suppressFlag = true;
-            var selStart = rtb.SelectionStart;
-            var selLength = rtb.SelectionLength;
-
-            rtb.SelectAll();
-            rtb.SelectionColor = defaultColor;
-
-            foreach (var (regex, getIndex, getLength, color) in rules)
-            {
-                foreach (Match m in regex.Matches(text))
-                {
-                    rtb.Select(getIndex(m), getLength(m));
-                    rtb.SelectionColor = color;
-                }
-            }
-
-            rtb.Select(selStart, selLength);
-            rtb.SelectionColor = defaultColor;
-            suppressFlag = false;
-        }
-
-        private static void StripIncomingFormatting(RichTextBox rtb, ref bool suppressFlag)
-        {
-            var plain = rtb.Text;
-            if (string.IsNullOrEmpty(plain)) return;
-
-            // Strip any background colors, fonts, etc. pasted from external sources
-            suppressFlag = true;
-            var pos = rtb.SelectionStart;
-            rtb.SelectAll();
-            rtb.SelectionBackColor = rtb.BackColor;
-            rtb.SelectionFont = rtb.Font;
-            rtb.SelectionStart = Math.Min(pos, plain.Length);
-            rtb.SelectionLength = 0;
-            suppressFlag = false;
+            _loadedPairs = result.Pairs;
+            PopulatePreview(dgv, countLabel, _loadedPairs, result.SkippedCount, sourceName);
+            split.Panel2Collapsed = _loadedPairs.Count == 0;
+            UpdateStartButton();
+            PreFillProgress(_loadedPairs.Count);
         }
 
         private void PopulatePreview(DataGridView dgv, System.Windows.Forms.Label countLabel,
